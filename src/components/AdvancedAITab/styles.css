@@ -1,0 +1,82 @@
+/* Advanced AI Consultation Mobile-First Redesigned Styles */
+
+.advanced-ai-redesign {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 80px);
+  max-width: 100%;
+  background-color: var(--ds-surface-container, #FDFBF7);
+  color: var(--ds-secondary, #1b1c1a);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid var(--ds-secondary-border, rgba(44, 62, 80, 0.15));
+}
+
+/* Scrollbar utilities */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Slide-up modal animations */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Message Styles */
+.message-bubble {
+  word-break: break-word;
+}
+
+.message-bubble p {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Touch targets and mobile viewport adjustments */
+@media (max-width: 768px) {
+  .advanced-ai-redesign {
+    min-height: 100%;
+    height: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+    border: none;
+  }
+
+  .mobile-header button {
+    min-width: 36px;
+    min-height: 36px;
+  }
+
+  .mobile-input-area textarea {
+    font-size: 14px;
+  }
+}

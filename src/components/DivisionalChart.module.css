@@ -1,0 +1,305 @@
+.container {
+  width: 100%;
+  max-width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #10141f 0%, #16213e 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid #1e2433;
+}
+
+.compact {
+  padding: 8px;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 20px;
+  border-bottom: 2px solid rgba(245, 166, 35, 0.3);
+  padding-bottom: 12px;
+}
+
+.header h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #f5a623;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.lagnaLordInfo {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(245, 166, 35, 0.8);
+}
+
+.lagnaLordInfo strong {
+  color: #f5a623;
+  font-weight: 600;
+}
+
+/* East Indian Chart Grid */
+.chartGrid {
+  display: grid;
+  gap: 0;
+  background: rgba(0, 0, 0, 0.2);
+  border: 2px solid rgba(245, 166, 35, 0.3);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.eastIndian {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr) auto;
+  min-height: 450px;
+}
+
+.houseCell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-height: 110px;
+  padding: 12px;
+  border: 1px solid rgba(245, 166, 35, 0.15);
+  background: rgba(22, 33, 62, 0.5);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  user-select: none;
+}
+
+.houseCell:hover {
+  background: rgba(245, 166, 35, 0.08);
+  border-color: rgba(245, 166, 35, 0.4);
+  box-shadow: inset 0 0 12px rgba(245, 166, 35, 0.1);
+}
+
+.houseCell.lagna {
+  background: rgba(245, 166, 35, 0.12);
+  border: 2px solid #f5a623;
+  box-shadow: 0 0 16px rgba(245, 166, 35, 0.2);
+  min-height: 130px;
+}
+
+.houseCell.lagna:hover {
+  background: rgba(245, 166, 35, 0.18);
+  box-shadow: 0 0 24px rgba(245, 166, 35, 0.35);
+}
+
+.houseCell.selected {
+  background: rgba(245, 166, 35, 0.15);
+  border-color: #f5a623;
+  box-shadow: 0 0 20px rgba(245, 166, 35, 0.3);
+}
+
+.houseCell.highlighted {
+  animation: highlight 0.8s ease-in-out;
+}
+
+@keyframes highlight {
+  0%, 100% {
+    box-shadow: 0 0 0 rgba(245, 166, 35, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(245, 166, 35, 0.8);
+  }
+}
+
+.houseNumber {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(245, 166, 35, 0.7);
+  text-transform: uppercase;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+
+.signName {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(245, 166, 35, 0.8);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  letter-spacing: 1px;
+}
+
+.planetsContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+  min-height: 30px;
+  width: 100%;
+}
+
+.emptyHouse {
+  color: rgba(255, 255, 255, 0.2);
+  font-size: 16px;
+  font-weight: 300;
+}
+
+.planetBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 26px;
+  padding: 0 8px;
+  margin: 2px;
+  background: rgba(19, 26, 43, 0.9);
+  color: #ffffff;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1.5px solid #f5a623;
+  cursor: help;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  font-family: monospace;
+}
+
+.planetBadge:hover {
+  transform: scale(1.12);
+  box-shadow: 0 4px 12px rgba(245, 166, 35, 0.4);
+  filter: brightness(1.2);
+}
+
+.planetBadge.retrograde {
+  font-style: italic;
+  border-color: #ff4444;
+  color: #ff8f8f;
+  position: relative;
+}
+
+/* Center Info */
+.centerInfo {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 2px solid rgba(245, 166, 35, 0.4);
+}
+
+.lagnaName {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f5a623;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.lagnaLord {
+  font-size: 13px;
+  color: rgba(245, 166, 35, 0.8);
+  font-weight: 600;
+}
+
+/* Signification Tooltip */
+.significationTooltip {
+  position: absolute;
+  bottom: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 10px;
+  color: rgba(245, 166, 35, 0.7);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.houseCell:hover .significationTooltip {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .container {
+    padding: 12px;
+  }
+
+  .header h3 {
+    font-size: 16px;
+  }
+
+  .eastIndian {
+    min-height: 380px;
+  }
+
+  .houseCell {
+    min-height: 95px;
+    padding: 8px;
+  }
+
+  .planetBadge {
+    min-width: 32px;
+    height: 24px;
+    font-size: 10px;
+    padding: 0 6px;
+  }
+
+  .planetBadge:hover {
+    transform: scale(1.08);
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 8px;
+  }
+
+  .eastIndian {
+    min-height: 320px;
+    gap: 2px;
+  }
+
+  .houseCell {
+    min-height: 80px;
+    padding: 6px;
+  }
+
+  .houseNumber {
+    font-size: 10px;
+  }
+
+  .signName {
+    font-size: 11px;
+  }
+
+  .planetBadge {
+    min-width: 28px;
+    height: 22px;
+    font-size: 10px;
+    padding: 0 4px;
+    margin: 1px;
+  }
+
+  .centerInfo {
+    gap: 4px;
+    padding: 8px;
+  }
+
+  .lagnaName {
+    font-size: 13px;
+  }
+
+  .lagnaLord {
+    font-size: 11px;
+  }
+}

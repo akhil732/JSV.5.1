@@ -1,0 +1,6 @@
+{
+  "name": "RVA Software",
+  "description": "Comprehensive Vedic Astrology Software Dashboard featuring North Indian Diamond Natal, Progression and Transit Charts, Planetary Strength Analysis, Ashtakavarga Transit Strength Graphs, and Vimshottari Dasha.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

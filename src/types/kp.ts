@@ -1,0 +1,161 @@
+export type TopicEnum = 'MARRIAGE' | 'CAREER' | 'FINANCE' | 'HEALTH' | 'EDUCATION' | 'CHILDREN' | 'GENERAL';
+
+export type VerdictPromise = 'YES' | 'DELAYED' | 'NO';
+export type QualityLevel = 'FAVORABLE' | 'MIXED' | 'CHALLENGING';
+export type ConfidenceLevel = 'HIGH' | 'MODERATE' | 'LOW';
+
+export interface Cusp {
+  houseNumber: number; // 1 to 12
+  degree: number; // 0 - 360
+  formattedDegree: string; // e.g. "11° 24' 15\""
+  sign: string; // Zodiac sign name
+  signLord: string;
+  starLord: string;
+  subLord: string;
+  subSubLord: string;
+}
+
+export interface KPHouse {
+  number: number; // 1 to 12
+  sign: string;
+  formattedDegree: string;
+  signLord: string;
+  starLord: string;
+  subLord: string;
+  subSubLord: string;
+  cuspDegree: number;
+  promise?: 'YES' | 'DELAYED' | 'NO';
+  gatekeeperReasoning?: string;
+}
+
+export interface KPPlanet {
+  name: string;
+  sign: string;
+  degree: number;
+  formattedDegree: string;
+  signLord: string;
+  starLord: string;
+  subLord: string;
+  subSubLord: string;
+  isRetrograde?: boolean;
+  isCombust?: boolean;
+  isDebilitated?: boolean;
+  significatorOf: number[];
+}
+
+export interface PlanetSignificatorLevels {
+  level1: number[]; // Star lord of house occupants
+  level2: number[]; // House occupants
+  level3: number[]; // Star lord of house owner
+  level4: number[]; // House owner
+}
+
+export interface DashaPeriod {
+  planet: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+}
+
+export interface DashaInfo {
+  mahadasha: string;
+  antardasha: string; // Bhukti
+  pratyantardasha?: string;
+  sookshmadasha?: string;
+  mahadashaEnd?: string;
+  antardashaEnd?: string;
+}
+
+export interface RulingPlanets {
+  lagnaSign: string;
+  lagnaSignLord: string;
+  lagnaStarLord: string;
+  lagnaSubLord: string;
+  lagnaSubSubLord: string;
+  moonSign: string;
+  moonSignLord: string;
+  moonStarLord: string;
+  moonSubLord: string;
+  moonSubSubLord: string;
+  dayLord: string;
+  timestamp: string;
+}
+
+export interface KPChart {
+  birthData: {
+    name: string;
+    gender: 'Male' | 'Female';
+    date: string;
+    time: string;
+    place: string;
+    latitude: number;
+    longitude: number;
+    timezone: number;
+  };
+  planets: KPPlanet[];
+  houses: KPHouse[];
+  rulingPlanets: RulingPlanets;
+  currentDasha: DashaInfo;
+  houseSignificators: Record<number, string[]>;
+  planetSignificators: Record<string, PlanetSignificatorLevels>;
+}
+
+export interface KPQuery {
+  question: string;
+  topic: TopicEnum;
+  relevantHouse: number;
+  targetDate?: string;
+}
+
+export interface KPVerdictStep {
+  stepNumber: number;
+  title: string;
+  description: string;
+  status: 'PASSED' | 'WARNING' | 'FAILED' | 'NEUTRAL';
+  textbookRef?: string;
+}
+
+export interface KPVerdict {
+  promise: VerdictPromise;
+  timing: string;
+  quality: QualityLevel;
+  confidence: ConfidenceLevel;
+  confidenceScore: number; // 0 - 100 percentage
+  confidenceBreakdown?: {
+    gatekeeperScore: number; // 0.0 - 1.0
+    significatorScore: number; // 0.0 - 1.0
+    dashaScore: number; // 0.0 - 1.0
+    transitScore: number; // 0.0 - 1.0
+    vedicScore: number; // 0.0 - 1.0
+  };
+  explanation: string;
+  steps: KPVerdictStep[];
+  obstacles?: string[];
+  alternativeScenarios?: {
+    title: string;
+    description: string;
+    timing: string;
+    probability: string;
+  }[];
+  reasoning: {
+    cuspSubLord: string;
+    cuspSubLordHouses: number[];
+    significators: string[];
+    dashaStatus: string;
+    transitSupport: string;
+    vedicSupport: string;
+  };
+  contextualization?: {
+    acknowledgment: string;
+    recommendations: string[];
+    reassurance: string;
+    actionPlan: string;
+  };
+}
+
+export interface DomainPrediction {
+  topic: TopicEnum;
+  domainName: string;
+  icon: string;
+  houses: number[];
+  verdict: KPVerdict;
+}

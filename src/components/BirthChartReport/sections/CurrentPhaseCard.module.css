@@ -1,0 +1,155 @@
+.phaseCard {
+  background: #10141F;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  border: 1px solid #1E2433;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.titleHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #F5A623;
+  font-weight: 700;
+  font-family: ui-serif, Georgia, Cambria, serif;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  letter-spacing: 0.02em;
+}
+
+.dhasaGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.dashaBox {
+  background: #0A0E17;
+  border: 1px solid #1E2433;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.dashaBox:hover {
+  border-color: rgba(245, 166, 35, 0.35);
+  transform: translateY(-2px);
+}
+
+.dashaBox.active {
+  background: linear-gradient(135deg, rgba(245, 166, 35, 0.08) 0%, rgba(16, 20, 31, 0.95) 100%);
+  border-color: #F5A623;
+  box-shadow: 0 0 15px rgba(245, 166, 35, 0.15);
+}
+
+.label {
+  font-size: 0.725rem;
+  font-weight: 700;
+  color: #9CA3AF;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.planet {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #F5F5F7;
+  margin-bottom: 0.25rem;
+}
+
+.dates {
+  font-size: 0.775rem;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: #6B7280;
+  margin-bottom: 0.5rem;
+}
+
+.effect {
+  font-size: 0.8rem;
+  color: #D1D5DB;
+  margin-bottom: 0.5rem;
+}
+
+.status {
+  font-size: 0.725rem;
+  font-weight: 700;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.statusActive {
+  background: rgba(239, 68, 68, 0.15);
+  color: #F87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.statusOngoing {
+  background: rgba(245, 166, 35, 0.12);
+  color: #F5A623;
+  border: 1px solid rgba(245, 166, 35, 0.25);
+}
+
+.statusTransit {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34D399;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.progressTrack {
+  width: 100%;
+  height: 4px;
+  background: #1E2433;
+  border-radius: 2px;
+  margin-top: 0.5rem;
+  overflow: hidden;
+}
+
+.progressBar {
+  height: 100%;
+  background: linear-gradient(90deg, #F5A623 0%, #10B981 100%);
+  border-radius: 2px;
+}
+
+.meaning {
+  background: #0A0E17;
+  border-left: 3px solid #F5A623;
+  padding: 1rem 1.25rem;
+  border-radius: 0.5rem;
+  border-top: 1px solid #1E2433;
+  border-right: 1px solid #1E2433;
+  border-bottom: 1px solid #1E2433;
+}
+
+.meaning p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #D1D5DB;
+}
+
+.meaning strong {
+  color: #F5A623;
+}
+

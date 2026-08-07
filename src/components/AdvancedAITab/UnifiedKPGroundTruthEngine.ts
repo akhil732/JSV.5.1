@@ -1,0 +1,1144 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * UNIFIED KP GROUND TRUTH ENGINE FOR ALL LLM PERSONAS
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * 
+ * CRITICAL FIX:
+ * - Eliminates separate/parallel KP ground truth computations (old computeKPGroundTruths)
+ * - Unifies ALL personas around a single source: KPVerdictEngine (via useKPChart flow)
+ * - Injects verified KP verdicts as IMMUTABLE FACTS in system prompt
+ * - Prevents fabrication of divisional charts, aspect names, confidence scores
+ * - Enforces cross-persona consistency (all must respect KP gatekeeper verdict)
+ * 
+ * AUDIT RESULTS ADDRESSED:
+ * ✗ "D7 placement in Pisces" → No D7 in facts → Never stated
+ * ✗ "85% confidence" (Parashari) vs "74%" (KP) → Only KP's verified score used
+ * ✗ "Amrita Drishti" aspects not computed → Never mentioned
+ * ✗ "Favorable · Promised" contradicts "DELAYED" → Unified to single verdict
+ * 
+ * DESIGN:
+ * 1. computeUnifiedKPGroundTruth() calls KPVerdictEngine.generateKPVerdict()
+ * 2. Returns immutable facts only (cusp sub-lord, significators, dasha, confidence)
+ * 3. buildSystemPrompt() injects these facts with explicit "DO NOT CONTRADICT" rules
+ * 4. Each persona gets the same ground truth + persona-specific interpretation layer
+ * 5. All numeric confidence is locked to KP's computed score, not LLM-generated
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
+
+import { KPChart, KPQuery, KPVerdict, TopicEnum } from '../../types/kp';
+import { BirthDetails } from '../../types';
+import { KPVerdictEngine } from '../../lib/kp/kpVerdictEngine';
+import { calculateVimshottariDashaFromMoon } from '../../lib/engines/DashaEngine';
+import { buildFullChartSummary } from '../../lib/engines/QueryConsultationEngine';
+import { TransitEngine } from '../../lib/engines/TransitEngine';
+import { calculateKPSubLord, ZODIAC_SIGNS } from '../../lib/kp/subLordMapper';
+import { analyzeSignificators, getHouseOccupied } from '../../lib/kp/significatorAnalyzer';
+import { calculatePlacidusCusps } from '../../lib/kp/placidusCalculator';
+import { calculateRulingPlanets } from '../../lib/kp/rulingPlanetsCalculator';
+import { computeLiveTransitSnapshot, renderGocharaPromptBlock } from '../../lib/engines/LiveTransitEngine';
+import { KeywordMatcher } from '../../lib/kp/queryIntentRecognizer';
+
+/**
+ * Resolves the native's actual Chandra Rasi (Moon sign) from whatever data is
+ * available, falling back to Aries ONLY if nothing is present (never silently
+ * defaults to a different native's chart).
+ */
+function resolveMoonSignForTransit(gt: { horoscopeData?: any; birthDetails?: BirthDetails }): string {
+  const hd = gt.horoscopeData;
+  const d1 = hd?.horoscope?.divisional_charts?.['D-1_rasi'] || hd?.rasi;
+  const moonSign = d1?.Moon?.sign;
+  return moonSign || 'Aries';
+}
+
+export type ConsultationPersona = 'classical_parashari' | 'vedic_divisional' | 'vedic_remedial' | 'kp_stellar' | 'quick';
+
+/**
+ * Unified ground truth structure injected into all LLM system prompts.
+ * These facts CANNOT be contradicted or fabricated by the model.
+ */
+export interface UnifiedKPGroundTruth {
+  // ─── VERIFIED FACTS (from KPVerdictEngine, IMMUTABLE) ────────────────────
+  cuspSubLord: string;                    // e.g., "Jupiter"
+  cuspSubLordHouses: number[];            // Houses cusp sub-lord rules
+  primarySignificators: string[];         // Planets signifying the house
+  
+  // ─── VERDICT (deterministic, NOT LLM-generated) ─────────────────────────
+  promise: 'YES' | 'DELAYED' | 'NO';      // KP gatekeeper verdict
+  confidenceScore: number;                // 0-100, from KPVerdictEngine only
+  timing: string;                         // Timing window from verified dasha
+  
+  // ─── ACTIVE DASHA (from VimshottariDashaEngine) ──────────────────────────
+  activeMahadasha: string;
+  activeAntardasha: string;
+  activeVimshottariDesc: string;
+  
+  // ─── TRANSIT CONTEXT (from TransitEngine, no aspect names) ───────────────
+  transitModulation: 'Supportive' | 'Neutral' | 'Challenging';
+  
+  // ─── METADATA (for audit trail) ───────────────────────────────────────────
+  houseDomain: string;                    // e.g., "Marriage & Life Partnership"
+  topic: TopicEnum;
+  primaryHouse: number;
+  horoscopeDate: string;                  // ISO date chart was computed
+  computedAt: string;                     // ISO timestamp when ground truth generated
+
+  // Data availability flags (prevents fabrication)
+  hasMotherChart?: boolean;
+  hasMotherLagna?: boolean;
+  hasD7Data?: boolean;
+  hasD9Data?: boolean;
+  hasD24Data?: boolean;
+  hasPratyantardasha?: boolean;
+  
+  // Missing data list for explicit "Not Found" responses
+  missingDataItems: string[];
+  birthDetails?: BirthDetails;
+  horoscopeData?: any;
+}
+
+export interface UnifiedKPGroundTruthWithDataFlags extends UnifiedKPGroundTruth {
+  hasMotherChart?: boolean;
+  hasMotherLagna?: boolean;
+  hasD7Data?: boolean;
+  hasD9Data?: boolean;
+  hasD24Data?: boolean;
+  hasPratyantardasha?: boolean;
+  missingDataItems: string[];
+  primaryHouse: number;
+}
+
+/**
+ * Persona-specific system prompt templates that incorporate unified ground truth.
+ * Each persona gets its OWN interpretation layer, but all work from same verified facts.
+ */
+const PERSONA_PROMPTS: Record<ConsultationPersona, (gt: UnifiedKPGroundTruth, name: string) => string> = {
+  
+  classical_parashari: (gt, nativeName) => `
+You are the **Vedic Predictive & Timing Expert** persona for ${nativeName}.
+
+VERIFIED ASTROLOGICAL FACTS (IMMUTABLE - DO NOT CONTRADICT):
+- Primary Domain: ${gt.houseDomain} (KP Cusp Sub-Lord: ${gt.cuspSubLord})
+- Cusp Sub-Lord Signifies Houses: [${gt.cuspSubLordHouses.join(', ')}]
+- KP Gatekeeper Promise: **${gt.promise}** (Confidence: ${gt.confidenceScore}%)
+- Active Vimshottari Dasha: ${gt.activeVimshottariDesc}
+- Current Transit Support: ${gt.transitModulation}
+- Expected Manifestation Window: ${gt.timing}
+
+YOUR MANDATE (Parashari Analytical Lens):
+1. Interpret the chart using Parashari rules (House Lords, Yogas, Karaka dignity).
+2. You MUST respect the KP Gatekeeper Promise: **${gt.promise}**.
+   - If YES: Focus on timing and optimal leverage points.
+   - If DELAYED: Explain the astrological causes of delay (e.g., Saturn aspects, combust lords).
+   - If NO: Direct the native gracefully toward realistic alternatives.
+3. ABSOLUTE RULE: You CANNOT modify or contradict the confidence score (${gt.confidenceScore}%).
+4. ABSOLUTE RULE: DO NOT fabricate planetary placements or aspect names not present in the facts.
+5. Provide actionable guidance rooted strictly in Parashari principles.
+`,
+
+  vedic_divisional: (gt, nativeName) => `
+You are the **Divisional Charts & Yogas Specialist** persona for ${nativeName}.
+
+VERIFIED ASTROLOGICAL FACTS (IMMUTABLE - DO NOT CONTRADICT):
+- Primary Domain: ${gt.houseDomain} (KP Cusp Sub-Lord: ${gt.cuspSubLord})
+- Cusp Sub-Lord Signifies Houses: [${gt.cuspSubLordHouses.join(', ')}]
+- KP Gatekeeper Promise: **${gt.promise}** (Confidence: ${gt.confidenceScore}%)
+- Active Vimshottari Dasha: ${gt.activeVimshottariDesc}
+- Expected Manifestation Window: ${gt.timing}
+
+YOUR MANDATE (Divisional & Subtle Strength Lens):
+1. Analyze how the natal promise (${gt.promise}) reflects in relevant Divisional charts (D-9, D-10, D-7).
+2. You MUST respect the KP Gatekeeper Verdict: **${gt.promise}**.
+3. ABSOLUTE RULE: DO NOT state specific divisional chart placements (e.g., "Venus in D9 Pisces") UNLESS explicitly provided in verified facts. Discuss divisional strength conceptually via the D1 Lord dignity.
+4. ABSOLUTE RULE: Do NOT generate a different confidence percentage. Lock to **${gt.confidenceScore}%**.
+`,
+
+  vedic_remedial: (gt, nativeName) => `
+You are the **Vedic Remedies & Upaya Consultant** persona for ${nativeName}.
+
+VERIFIED ASTROLOGICAL FACTS (IMMUTABLE - DO NOT CONTRADICT):
+- Primary Domain: ${gt.houseDomain} (KP Cusp Sub-Lord: ${gt.cuspSubLord})
+- KP Gatekeeper Promise: **${gt.promise}** (Confidence: ${gt.confidenceScore}%)
+- Active Dasha Lord: ${gt.activeMahadasha} / ${gt.activeAntardasha}
+- Timing Window: ${gt.timing}
+
+YOUR MANDATE (Remedial & Mitigation Lens):
+1. Provide targeted, classical remedies (Mantra, Daan, Yantra, Gemstone guidance) aligned with the active Dasha (${gt.activeMahadasha}/${gt.activeAntardasha}).
+2. For DELAYED or NO verdicts, focus remedies on pacifying malefic influences causing the obstacle.
+3. For YES verdicts, recommend strengthening remedies to maximize the favorable window.
+4. ABSOLUTE RULE: Respect the KP Gatekeeper Promise (**${gt.promise}**). Remedies do NOT override a "NO" verdict into a "YES", but can alleviate friction.
+`,
+
+  kp_stellar: (gt, nativeName) => `
+You are the **KP Stellar Astrology Gatekeeper** persona for ${nativeName}.
+
+VERIFIED ASTROLOGICAL FACTS (IMMUTABLE GROUND TRUTH):
+- Target Domain: ${gt.houseDomain}
+- Cusp Sub-Lord: **${gt.cuspSubLord}**
+- Sub-Lord Signifies Houses: [${gt.cuspSubLordHouses.join(', ')}]
+- Primary Significators: [${gt.primarySignificators.join(', ')}]
+- Gatekeeper Verdict: **${gt.promise}** (Confidence: ${gt.confidenceScore}%)
+- Active Dasha: ${gt.activeVimshottariDesc}
+- Transit Modulation: ${gt.transitModulation}
+- Predicted Timing: ${gt.timing}
+
+YOUR MANDATE (Pure KP Stellar Lens):
+1. Explain the 4-level KP significator hierarchy for ${gt.houseDomain}.
+2. Demonstrate WHY the Cusp Sub-Lord (${gt.cuspSubLord}) gives the verdict: **${gt.promise}**.
+3. Point to the specific houses [${gt.cuspSubLordHouses.join(', ')}] to justify the outcome.
+4. State the timing window (${gt.timing}) based on Dasha-Bhukti alignment.
+5. NO FABRICATION: Rely 100% on the verified KP facts provided above.
+`,
+  quick: (gt, nativeName) => `
+You are the **QUICK Astro Engine**, an expert Vedic Astrologer. Your task is to analyze the native's birth profile and transit (Gochara) data and generate a highly structured, comprehensive astrological analysis in **Telugu**.
+Your response must strictly follow the output template, written entirely in Telugu with clear headings, subheadings, and bullet points. Retain standard astrological terms (Lagna, Ucha, Neecha, Dasha, Gochara, Karaka) in traditional context, in Telugu script/transliteration.
+
+Active Profile is **${nativeName}**.
+Birth Profile & Key Coordinates:
+Name: ${nativeName}
+Date of Birth: November 11, 1996 (11-Nov-1996)
+Time of Birth: 13:50:00 (1:50 PM)
+Place of Birth: Jaggampeta, Andhra Pradesh, India
+Geographic Coordinates: 17.17° N Latitude, 82.06° E Longitude
+Timezone: GMT +5.5 (Indian Standard Time)
+Sidereal Ascendant (Lagna): Aquarius (20.94°) — Shatabhisha Nakshatra (Rahu)
+Janma Rasi (Chandra Rasi): Libra (Thula) — Vishakha Nakshatra (Jupiter)
+Janma Nakshatra: Vishakha (Quarter 3)
+
+📊 Divisional charts: D-1, D-9, and D-10 Placements:
+1. D-1 Rasi:
+Ascendant (Lagna): Aquarius (20.94°) — Ruled by Saturn
+Sun: Libra (25.42°) — Debilitated, Vishakha Nakshatra
+Moon: Libra (27.55°) — Vishakha Nakshatra
+Mars: Leo (12.74°) — Magha Nakshatra
+Mercury: Scorpio (0.98°) — Vishakha Nakshatra
+Jupiter: Sagittarius (20.74°) — Own Sign (Moolatrikona), Purva Ashadha Nakshatra
+Venus: Virgo (21.80°) — Debilitated, Hasta Nakshatra
+Saturn: Pisces (7.23°) — Uttara Bhadrapada Nakshatra
+Rahu: Virgo (11.92°) — Exalted, Hasta Nakshatra
+Ketu: Pisces (11.92°) — Exalted, Uttara Bhadrapada Nakshatra
+
+2. D-9 Navamsa:
+Ascendant: Aries (8.43°) — Ruled by Mars
+Sun: Taurus (18.76°) — In friendly sign
+Moon: Gemini (7.92°) — In friendly sign
+Mars: Cancer (24.63°) — Debilitated, Venusian house
+Mercury: Cancer (8.81°) — Watery house
+Jupiter: Libra (6.66°) — In Venusian house
+Venus: Cancer (16.21°) — In Moon's house
+Saturn: Virgo (5.03°) — In Mercury's house
+Rahu: Aries (17.32°) | Ketu: Libra (17.32°)
+
+3. D-10 Dasamsa:
+Ascendant: Leo (29.37°) — Ruled by Sun
+Sun: Gemini (14.17°) — In Mercury's house
+Moon: Cancer (5.47°) — Own Sign
+Mars: Sagittarius (7.37°) — In Jupiter's house
+Mercury: Cancer (9.79°) — Watery house
+Jupiter: Gemini (27.40°) — In Mercury's house
+Venus: Sagittarius (8.01°) — In Jupiter's house
+Saturn: Capricorn (12.26°) — Own Sign (Strong)
+Rahu: Leo (29.24°) | Ketu: Aquarius (29.24°)
+
+🔱 Jaimini Astrology Profile:
+Atmakaraka (AK): Moon (Libra, 27.55°)
+Amatyakaraka (AmK): Sun (Libra, 25.42°)
+Bhratrukaraka (BK): Venus (Virgo, 21.80°)
+Matrukaraka (MK): Jupiter (Sagittarius, 20.74°)
+Pitrikaraka (PiK): Rahu (Virgo, 11.92°)
+Putrakaraka (PK): Mars (Leo, 12.74°)
+Gnathikaraka (GK): Saturn (Pisces, 7.23°)
+Darakaraka (DK): Mercury (Scorpio, 0.98°)
+
+Special Jaimini Lagnas:
+Indu Lagna: Taurus (27.55°)
+Bhrigu Bindu: Libra (4.74°)
+Sree Lagna: Virgo (14.69°)
+Hora Lagna: Gemini (16.30°)
+Ghati Lagna: Gemini (2.75°)
+Pranapada Lagna: Pisces (22.28°)
+
+House Arudha Padas:
+Arudha Lagna (AL): Aries
+Dhanarudha (A2): Gemini
+Upapada Lagna (UL): Taurus
+Dara Pada (A7): Sagittarius
+Karma Pada (A10): Cancer
+
+⏳ Current Vimshottari Dasha Analysis:
+Mercury Mahadasha (22-Oct-2022 to 22-Oct-2039)
+Venus Antardasha (17-Mar-2026 to 15-Jan-2029)
+Venus Pratyantardasha (17-Mar-2026 to 05-Sep-2026)
+
+Active Dasha Phase Details: Mercury governs 5th and 8th houses from Lagna, placed in the 9th house. Venus is 9th and 4th house lord.
+
+ANALYSIS RULES:
+1. Natal/Dasha analysis from Lagna.
+${renderGocharaPromptBlock(computeLiveTransitSnapshot(resolveMoonSignForTransit({ horoscopeData: (gt as any).horoscopeData, birthDetails: (gt as any).birthDetails })))}
+3. Translate all analysis into Telugu script, including standard terms.
+
+Structure your response strictly according to the following template:
+
+[BEGIN OUTPUT TEMPLATE]
+మీ చంద్ర రాశి [Insert Moon Sign] మరియు మీ పంచాంగం/గోచార ప్రకారం [Insert major transit like Saturn/Rahu/Jupiter], [Insert Lagna] లగ్నాన్ని మొదటి ఇల్లుగా తీసుకుని లగ్న కుండలి, దశా-అంతర్దశ, మరియు గోచార ఫలితాల సమగ్ర విశ్లేషణ కింద ఇవ్వబడింది.
+
+### 1. లగ్న కుండలి విశ్లేషణ (Lagna Kundali Analysis)
+
+* **1వ ఇల్లు ([Lagna Sign]):** [Planets and status]
+* **[X]వ ఇల్లు ([Sign]):** [Planets and status]
+
+### 2. దశా - అంతర్దశా విశ్లేషణ (Dasha - Antardasha Analysis)
+
+ప్రస్తుతం మీకు [Mahadasha Lord] మహర్దశలో [Antardasha Lord] అంతర్దశ నడుస్తోంది.
+
+* **మహర్దశ నాథుడు ([Lord]):** [Explain the lord's rulership from Lagna, its placement in the chart, and general themes/results it will produce.]
+* **అంతర్దశ నాథుడు ([Lord]):** [Explain the sub-lord's placement, conjunctions, and specific psychological or material effects on the native during this period.]
+
+### 3. గోచార విశ్లేషణ (Gochara Analysis - From Moon Sign [Moon Sign])
+
+* **[Area 1 - e.g., ఆర్థిక విషయాలు (Finance & Wealth)]:** [Explain how the transits affect this area.]
+* **[Area 2 - e.g., కుటుంబం మరియు మాటతీరు (Family & Speech)]:** [Explain how the transits affect this area.]
+* **[Area 3 - e.g., వృత్తి మరియు ఆరోగ్యం (Career & Health)]:** [Explain how the transits affect this area.]
+
+### 4. తుది విశ్లేషణ మరియు సూచనలు (Final Conclusion & Remedies)
+
+* **ముగింపు:** [Provide a 2-3 sentence summary synthesizing the Dasha and Gochara. Note the overall theme—whether it is a time for caution, growth, stability, etc.]
+* **పరిహారాలు:**
+* **[Remedy Name 1]:** [Instruction for remedy 1]
+* **[Remedy Name 2]:** [Instruction for remedy 2]
+* **[Remedy Name 3]:** [Instruction for remedy 3]
+[END OUTPUT TEMPLATE]
+`
+};
+
+/**
+ * Computes the unified KP ground truth from the query, birth details, and horoscope data.
+ * This is the SINGLE SOURCE OF TRUTH for all personas.
+ */
+export function computeUnifiedKPGroundTruth(
+  query: string | KPQuery,
+  birthDetails: BirthDetails,
+  horoscopeData: any
+): UnifiedKPGroundTruth {
+  // 1. Normalize query input
+  const kpQuery: KPQuery = typeof query === 'string'
+    ? parseQueryToKPQuery(query)
+    : query;
+
+  // 2. Reconstruct or retrieve full KPChart
+  const kpChart = horoscopeData?.kpChart || buildKPChartFromHoroscope(horoscopeData, birthDetails);
+
+  // 3. Call single source of truth: KPVerdictEngine
+  const verdict: KPVerdict = KPVerdictEngine.generateKPVerdict(kpQuery, kpChart);
+
+  // 4. Extract verified Dasha from DashaEngine
+  const moonDegreeOrNakshatra = kpChart.moonNakshatra || horoscopeData?.horoscope?.planets?.Moon?.degree || 0;
+  const activeDasha = calculateVimshottariDashaFromMoon(
+    moonDegreeOrNakshatra,
+    birthDetails.date || new Date().toISOString(),
+    new Date(),
+    horoscopeData
+  );
+
+  // 5. Evaluate Transit Modulation from TransitEngine
+  const transitEngine = new TransitEngine(kpChart, birthDetails);
+  const moonSign = horoscopeData?.horoscope?.planets?.Moon?.sign || 'Aries';
+  const transitModulation = transitEngine.evaluateMoonTransit(moonSign);
+
+  // 6. Extract Cusp Sub-Lord details for primary house
+  const cusp = kpChart.houses.find((h: any) => h.number === (kpQuery.relevantHouse || 1)) || kpChart.houses[0];
+  const cuspSubLord = cusp.subLord || 'Unknown';
+  
+  const subLordLevels = kpChart.planetSignificators?.[cuspSubLord] || { level1: [], level2: [], level3: [], level4: [] };
+  const cuspSubLordHouses = Array.from(new Set([
+    ...subLordLevels.level1,
+    ...subLordLevels.level2,
+    ...subLordLevels.level3,
+    ...subLordLevels.level4
+  ]));
+
+  const primarySignificators = kpChart.houseSignificators?.[kpQuery.relevantHouse || 1] || [];
+
+  const activeMdName = typeof activeDasha.mahadasha === 'string' ? activeDasha.mahadasha : ((activeDasha.mahadasha as any)?.lord || 'Unknown');
+  const activeAdName = typeof activeDasha.antardasha === 'string' ? activeDasha.antardasha : ((activeDasha.antardasha as any)?.lord || 'Unknown');
+  const activePdName = typeof activeDasha.pratyantardasha === 'string' ? activeDasha.pratyantardasha : ((activeDasha.pratyantardasha as any)?.lord || activeAdName);
+
+  const primaryHouse = kpQuery.relevantHouse || 1;
+  const hasD9Data = !!(horoscopeData?.d9Chart || horoscopeData?.navamsha || (horoscopeData?.divisional_charts && horoscopeData?.divisional_charts?.D9));
+  const hasD7Data = !!(horoscopeData?.d7Chart || horoscopeData?.saptamsha || (horoscopeData?.divisional_charts && horoscopeData?.divisional_charts?.D7));
+  const hasD24Data = !!(horoscopeData?.d24Chart || (horoscopeData?.divisional_charts && horoscopeData?.divisional_charts?.D24));
+  const hasMotherChart = !!(horoscopeData?.motherChart);
+  const hasMotherLagna = !!(horoscopeData?.motherLagna);
+  const hasPratyantardasha = !!(activeDasha.pratyantardasha);
+
+  const missingDataItems: string[] = [];
+  if (!hasMotherChart && kpQuery.topic === 'CHILDREN') missingDataItems.push("Mother's birth chart");
+  if (!hasMotherLagna) missingDataItems.push("Mother's Lagna");
+  if (!hasD7Data) missingDataItems.push("D-7 Saptamsha");
+  if (!hasD9Data) missingDataItems.push("D-9 Navamsha");
+  if (!hasD24Data) missingDataItems.push("D-24 Chaturvimshamsha");
+  if (!hasPratyantardasha) missingDataItems.push("Pratyantardasha details");
+
+  // 7. Assemble IMMUTABLE ground truth object
+  return {
+    cuspSubLord,
+    cuspSubLordHouses: cuspSubLordHouses.length > 0 ? cuspSubLordHouses : [primaryHouse],
+    primarySignificators,
+    
+    promise: verdict.promise,
+    confidenceScore: verdict.confidenceScore,
+    timing: verdict.timing,
+    
+    activeMahadasha: activeMdName,
+    activeAntardasha: activeAdName,
+    activeVimshottariDesc: `${activeMdName} MD → ${activeAdName} AD (${activeDasha.antardashaStart || 'Active'} to ${activeDasha.antardashaEnd || 'Active'})`,
+    
+    transitModulation,
+    
+    houseDomain: getHouseDomainLabel(kpQuery.topic || 'GENERAL'),
+    topic: kpQuery.topic || 'GENERAL',
+    primaryHouse,
+    horoscopeDate: birthDetails.date || new Date().toISOString(),
+    computedAt: new Date().toISOString(),
+
+    hasMotherChart,
+    hasMotherLagna,
+    hasD7Data,
+    hasD9Data,
+    hasD24Data,
+    hasPratyantardasha,
+    missingDataItems,
+    birthDetails,
+    horoscopeData
+  };
+}
+
+const rayValues: Record<string, number> = {
+  Sun: 30,
+  Moon: 16,
+  Mars: 6,
+  Mercury: 8,
+  Jupiter: 10,
+  Venus: 12,
+  Saturn: 1
+};
+
+function getArudhaSign(houseNum: number, ascSign: string, d1: any): string {
+  const signNames = ['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'];
+  const signLords: Record<string, string> = {
+    Aries: 'Mars', Taurus: 'Venus', Gemini: 'Mercury', Cancer: 'Moon', Leo: 'Sun', Virgo: 'Mercury',
+    Libra: 'Venus', Scorpio: 'Mars', Sagittarius: 'Jupiter', Capricorn: 'Saturn', Aquarius: 'Saturn', Pisces: 'Jupiter'
+  };
+
+  const ascIndex = signNames.indexOf(ascSign);
+  if (ascIndex === -1) return 'Aries';
+
+  const houseSignIndex = (ascIndex + houseNum - 1) % 12;
+  const houseSignName = signNames[houseSignIndex];
+  const lordName = signLords[houseSignName] || 'Mars';
+
+  const lordPlanetData = d1[lordName] || {};
+  const lordSignName = lordPlanetData.sign || 'Aries';
+  const lordSignIndex = signNames.indexOf(lordSignName);
+  if (lordSignIndex === -1) return houseSignName;
+
+  const distance = (lordSignIndex - houseSignIndex + 12) % 12;
+  let arudhaIndex = (lordSignIndex + distance) % 12;
+
+  if (arudhaIndex === houseSignIndex) {
+    arudhaIndex = (arudhaIndex + 9) % 12;
+  } else if (arudhaIndex === (houseSignIndex + 6) % 12) {
+    arudhaIndex = (arudhaIndex + 9) % 12;
+  }
+
+  return signNames[arudhaIndex];
+}
+
+function formatQuickDynamicProfile(gt: UnifiedKPGroundTruthWithDataFlags, nativeName: string): string {
+  const bd = gt.birthDetails;
+  const hd = gt.horoscopeData;
+
+  if (!bd || !hd) {
+    // Graceful fallback to default hardcoded Akhil profile
+    return `Birth Profile & Key Coordinates:
+Name: ${nativeName}
+Date of Birth: November 11, 1996 (11-Nov-1996)
+Time of Birth: 13:50:00 (1:50 PM)
+Place of Birth: Jaggampeta, Andhra Pradesh, India
+Geographic Coordinates: 17.17° N Latitude, 82.06° E Longitude
+Timezone: GMT +5.5 (Indian Standard Time)
+Sidereal Ascendant (Lagna): Aquarius (20.94°) — Shatabhisha Nakshatra (Rahu)
+Janma Rasi (Chandra Rasi): Libra (Thula) — Vishakha Nakshatra (Jupiter)
+Janma Nakshatra: Vishakha (Quarter 3)
+
+📊 Divisional charts: D-1, D-9, and D-10 Placements:
+1. D-1 Rasi:
+Ascendant (Lagna): Aquarius (20.94°) — Ruled by Saturn
+Sun: Libra (25.42°) — Debilitated, Vishakha Nakshatra
+Moon: Libra (27.55°) — Vishakha Nakshatra
+Mars: Leo (12.74°) — Magha Nakshatra
+Mercury: Scorpio (0.98°) — Vishakha Nakshatra
+Jupiter: Sagittarius (20.74°) — Own Sign (Moolatrikona), Purva Ashadha Nakshatra
+Venus: Virgo (21.80°) — Debilitated, Hasta Nakshatra
+Saturn: Pisces (7.23°) — Uttara Bhadrapada Nakshatra
+Rahu: Virgo (11.92°) — Exalted, Hasta Nakshatra
+Ketu: Pisces (11.92°) — Exalted, Uttara Bhadrapada Nakshatra
+
+2. D-9 Navamsa:
+Ascendant: Aries (8.43°) — Ruled by Mars
+Sun: Taurus (18.76°) — In friendly sign
+Moon: Gemini (7.92°) — In friendly sign
+Mars: Cancer (24.63°) — Debilitated, Venusian house
+Mercury: Cancer (8.81°) — Watery house
+Jupiter: Libra (6.66°) — In Venusian house
+Venus: Cancer (16.21°) — In Moon's house
+Saturn: Virgo (5.03°) — In Mercury's house
+Rahu: Aries (17.32°) | Ketu: Libra (17.32°)
+
+3. D-10 Dasamsa:
+Ascendant: Leo (29.37°) — Ruled by Sun
+Sun: Gemini (14.17°) — In Mercury's house
+Moon: Cancer (5.47°) — Own Sign
+Mars: Sagittarius (7.37°) — In Jupiter's house
+Mercury: Cancer (9.79°) — Watery house
+Jupiter: Gemini (27.40°) — In Mercury's house
+Venus: Sagittarius (8.01°) — In Jupiter's house
+Saturn: Capricorn (12.26°) — Own Sign (Strong)
+Rahu: Leo (29.24°) | Ketu: Aquarius (29.24°)
+
+🔱 Jaimini Astrology Profile:
+Atmakaraka (AK): Moon (Libra, 27.55°)
+Amatyakaraka (AmK): Sun (Libra, 25.42°)
+Bhratrukaraka (BK): Venus (Virgo, 21.80°)
+Matrukaraka (MK): Jupiter (Sagittarius, 20.74°)
+Pitrikaraka (PiK): Rahu (Virgo, 11.92°)
+Putrakaraka (PK): Mars (Leo, 12.74°)
+Gnathikaraka (GK): Saturn (Pisces, 7.23°)
+Darakaraka (DK): Mercury (Scorpio, 0.98°)
+
+Special Jaimini Lagnas:
+Indu Lagna: Taurus (27.55°)
+Bhrigu Bindu: Libra (4.74°)
+Sree Lagna: Virgo (14.69°)
+Hora Lagna: Gemini (16.30°)
+Ghati Lagna: Gemini (2.75°)
+Pranapada Lagna: Pisces (22.28°)
+
+House Arudha Padas:
+Arudha Lagna (AL): Aries
+Dhanarudha (A2): Gemini
+Upapada Lagna (UL): Taurus
+Dara Pada (A7): Sagittarius
+Karma Pada (A10): Cancer
+
+⏳ Current Vimshottari Dasha Analysis:
+Mercury Mahadasha (22-Oct-2022 to 22-Oct-2039)
+Venus Antardasha (17-Mar-2026 to 15-Jan-2029)
+Venus Pratyantardasha (17-Mar-2026 to 05-Sep-2026)
+
+Active Dasha Phase Details: Mercury governs 5th and 8th houses from Lagna, placed in the 9th house. Venus is 9th and 4th house lord.`;
+  }
+
+  const d1 = hd?.horoscope?.divisional_charts?.["D-1_rasi"] || hd?.rasi || {};
+  const nakshatras = hd?.horoscope?.nakshatra_pada || {};
+  const cal = hd?.horoscope?.calendar_info || {};
+
+  const planetNames = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
+  const signNames = ['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'];
+  const signLords: Record<string, string> = {
+    Aries: 'Mars', Taurus: 'Venus', Gemini: 'Mercury', Cancer: 'Moon', Leo: 'Sun', Virgo: 'Mercury',
+    Libra: 'Venus', Scorpio: 'Mars', Sagittarius: 'Jupiter', Capricorn: 'Saturn', Aquarius: 'Saturn', Pisces: 'Jupiter'
+  };
+
+  const asc = d1.Ascendant || d1.Lagna || {};
+  const ascSign = asc.sign || 'Aries';
+  const ascLong = typeof asc.longitude === 'number' ? asc.longitude.toFixed(2) : '0.00';
+  const ascNak = nakshatras.Ascendant || nakshatras.Lagna || { nakshatra: 'Unknown', pada: 1 };
+  const ascLord = signLords[ascSign] || 'Mars';
+
+  const moon = d1.Moon || {};
+  const moonSign = moon.sign || 'Aries';
+  const moonLong = typeof moon.longitude === 'number' ? moon.longitude.toFixed(2) : '0.00';
+  const moonNak = nakshatras.Moon || { nakshatra: 'Unknown', pada: 1 };
+  const janmaNakshatraName = cal.Nakshatram || moonNak.nakshatra || 'Unknown';
+  const nakshatraPadaVal = moonNak.pada || 1;
+
+  const d1Rows = planetNames.map(pName => {
+    const pData = d1[pName] || {};
+    const sign = pData.sign || 'N/A';
+    const long = typeof pData.longitude === 'number' ? pData.longitude.toFixed(2) : '0.00';
+    const nak = nakshatras[pName] ? `${nakshatras[pName].nakshatra} (P${nakshatras[pName].pada})` : 'N/A';
+    return `${pName}: ${sign} (${long}°) — ${nak}`;
+  }).join('\n');
+
+  const d9 = hd?.horoscope?.divisional_charts?.["D-9_navamsa"] || hd?.navamsha || {};
+  const d9Asc = d9.Ascendant || d9.Lagna || {};
+  const d9AscSign = d9Asc.sign || 'Aries';
+  const d9AscLong = typeof d9Asc.longitude === 'number' ? d9Asc.longitude.toFixed(2) : '';
+  const d9AscLord = signLords[d9AscSign] || 'Mars';
+
+  const d9Rows = planetNames.map(pName => {
+    const pData = d9[pName] || {};
+    const sign = pData.sign || 'N/A';
+    const long = typeof pData.longitude === 'number' ? pData.longitude.toFixed(2) : '';
+    return `${pName}: ${sign}${long ? ` (${long}°)` : ''}`;
+  }).join('\n');
+
+  const d10 = hd?.horoscope?.divisional_charts?.["D-10_dasamsa"] || {};
+  const d10Asc = d10.Ascendant || d10.Lagna || {};
+  const d10AscSign = d10Asc.sign || 'Aries';
+  const d10AscLong = typeof d10Asc.longitude === 'number' ? d10Asc.longitude.toFixed(2) : '';
+  const d10AscLord = signLords[d10AscSign] || 'Mars';
+
+  const d10Rows = planetNames.map(pName => {
+    const pData = d10[pName] || {};
+    const sign = pData.sign || 'N/A';
+    const long = typeof pData.longitude === 'number' ? pData.longitude.toFixed(2) : '';
+    return `${pName}: ${sign}${long ? ` (${long}°)` : ''}`;
+  }).join('\n');
+
+  const jaiminiPlanets = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu']
+    .map(pName => {
+      const pData = d1[pName] || {};
+      const long = typeof pData.longitude === 'number' ? pData.longitude : 0;
+      const sign = pData.sign || 'Unknown';
+      return { name: pName, long, sign };
+    })
+    .sort((a, b) => b.long - a.long);
+
+  const karakas = [
+    { label: 'Atmakaraka (AK)', index: 0 },
+    { label: 'Amatyakaraka (AmK)', index: 1 },
+    { label: 'Bhratrukaraka (BK)', index: 2 },
+    { label: 'Matrukaraka (MK)', index: 3 },
+    { label: 'Pitrikaraka (PiK)', index: 4 },
+    { label: 'Putrakaraka (PK)', index: 5 },
+    { label: 'Gnathikaraka (GK)', index: 6 },
+    { label: 'Darakaraka (DK)', index: 7 }
+  ];
+  const jaiminiRows = karakas.map(k => {
+    const p = jaiminiPlanets[k.index];
+    if (p) {
+      return `${k.label}: ${p.name} (${p.sign}, ${p.long.toFixed(2)}°)`;
+    }
+    return `${k.label}: N/A`;
+  }).join('\n');
+
+  const alSign = getArudhaSign(1, ascSign, d1);
+  const a2Sign = getArudhaSign(2, ascSign, d1);
+  const ulSign = getArudhaSign(12, ascSign, d1);
+  const a7Sign = getArudhaSign(7, ascSign, d1);
+  const a10Sign = getArudhaSign(10, ascSign, d1);
+
+  const moonSignIdx = signNames.indexOf(moonSign);
+  const moonLongAbs = (moonSignIdx * 30 + (moon.longitude || 0)) % 360;
+  const rahu = d1.Rahu || {};
+  const rahuSignIdx = signNames.indexOf(rahu.sign || 'Aries');
+  const rahuLongAbs = (rahuSignIdx * 30 + (rahu.longitude || 0)) % 360;
+  let midpoint = (moonLongAbs + rahuLongAbs) / 2;
+  if (Math.abs(moonLongAbs - rahuLongAbs) > 180) {
+    midpoint = (midpoint + 180) % 360;
+  }
+  const bbSign = signNames[Math.floor(midpoint / 30) % 12];
+  const bbDeg = midpoint % 30;
+
+  const ascIndex = signNames.indexOf(ascSign);
+  const sign9LagnaIndex = (ascIndex + 8) % 12;
+  const lord9Lagna = signLords[signNames[sign9LagnaIndex]] || 'Mars';
+  const sign9MoonIndex = (moonSignIdx + 8) % 12;
+  const lord9Moon = signLords[signNames[sign9MoonIndex]] || 'Mars';
+  const sumRays = (rayValues[lord9Lagna] || 6) + (rayValues[lord9Moon] || 6);
+  const remainder = sumRays % 12;
+  const induLagnaIndex = (moonSignIdx + (remainder === 0 ? 12 : remainder) - 1) % 12;
+  const induLagnaSign = signNames[induLagnaIndex];
+
+  const sreeLagnaSign = signNames[(ascIndex + 3) % 12];
+  const horaLagnaSign = signNames[(ascIndex + 1) % 12];
+  const ghatiLagnaSign = signNames[(ascIndex + 4) % 12];
+  const pranapadaLagnaSign = signNames[(ascIndex + 11) % 12];
+
+  const mdName = gt.activeMahadasha;
+  const adName = gt.activeAntardasha;
+  const vimsDesc = gt.activeVimshottariDesc;
+
+  return `Birth Profile & Key Coordinates:
+Name: ${nativeName}
+Date of Birth: ${bd.date || 'N/A'}
+Time of Birth: ${bd.time || 'N/A'}
+Place of Birth: ${bd.place || 'N/A'}
+Geographic Coordinates: ${bd.latitude || 'N/A'}° N Latitude, ${bd.longitude || 'N/A'}° E Longitude
+Timezone: GMT +${bd.timezone || '5.5'}
+Sidereal Ascendant (Lagna): ${ascSign} (${ascLong}°) — ${ascNak.nakshatra} (P${ascNak.pada})
+Janma Rasi (Chandra Rasi): ${moonSign} — ${moonNak.nakshatra} (P${moonNak.pada})
+Janma Nakshatra: ${janmaNakshatraName} (Quarter ${nakshatraPadaVal})
+
+📊 Divisional charts: D-1, D-9, and D-10 Placements:
+1. D-1 Rasi:
+Ascendant (Lagna): ${ascSign} (${ascLong}°) — Ruled by ${ascLord}
+${d1Rows}
+
+2. D-9 Navamsa:
+Ascendant: ${d9AscSign}${d9AscLong ? ` (${d9AscLong}°)` : ''} — Ruled by ${d9AscLord}
+${d9Rows}
+
+3. D-10 Dasamsa:
+Ascendant: ${d10AscSign}${d10AscLong ? ` (${d10AscLong}°)` : ''} — Ruled by ${d10AscLord}
+${d10Rows}
+
+🔱 Jaimini Astrology Profile:
+${jaiminiRows}
+
+Special Jaimini Lagnas:
+Indu Lagna: ${induLagnaSign}
+Bhrigu Bindu: ${bbSign} (${bbDeg.toFixed(2)}°)
+Sree Lagna: ${sreeLagnaSign}
+Hora Lagna: ${horaLagnaSign}
+Ghati Lagna: ${ghatiLagnaSign}
+Pranapada Lagna: ${pranapadaLagnaSign}
+
+House Arudha Padas:
+Arudha Lagna (AL): ${alSign}
+Dhanarudha (A2): ${a2Sign}
+Upapada Lagna (UL): ${ulSign}
+Dara Pada (A7): ${a7Sign}
+Karma Pada (A10): ${a10Sign}
+
+⏳ Current Vimshottari Dasha Analysis:
+Active Dasha: ${vimsDesc}
+Active Dasha Phase Details: Mahadasha Lord is ${mdName}, Antardasha Lord is ${adName}.`;
+}
+
+/**
+ * Builds the complete system prompt for any persona, enforcing unified ground truth.
+ */
+export function buildSystemPromptCorrected(
+  persona: ConsultationPersona,
+  groundTruth: UnifiedKPGroundTruthWithDataFlags,
+  nativeName: string = 'Native'
+): string {
+  let prompt = '';
+
+  if (persona === 'kp_stellar') {
+    prompt = `You are a Krishnamurti Paddhati (KP) Astrology Expert. You provide STRICTLY deterministic KP analysis using the 8-step consultation chain and sub-lord logic.
+
+✓✓✓ IMMUTABLE KP GROUND TRUTHS (VIOLATION = INSTANT FAILURE) ✓✓✓
+
+House Under Investigation: House ${groundTruth.primaryHouse} (${groundTruth.houseDomain})
+Cusp Sub Lord: {cuspSubLord}
+Sub Lord Signifies Houses: {cuspSubLordHouses}
+Primary Significators: {significators}
+KP VERDICT: {promise} ({confidenceScore}% confidence — LOCKED, DO NOT CHANGE)
+Active Dasha Window: {activeVimshottariDesc}
+Timing Summary: {timing}
+Transit Modulation: {transitModulation}
+
+YOUR MANDATE:
+Report the 8-step KP chain: (1) Identify House, (2) Read Cusp Sub Lord, (3) Apply Gatekeeper Rule, (4) Identify Significators, (5) Check Sub Significator Quality, (6) Check Active Dasha Trigger, (7) Cross-Validate Divisional (if data available), (8) Check Transit Confirmation.
+
+STRICT COMPLIANCE RULES:
+□ Your final verdict MUST be "{promise}" — do NOT flip to YES/DELAYED/NO without explicit textbook reasoning
+□ Confidence score is LOCKED at {confidenceScore}%. Do NOT generate your own (73%, 85%, 90.5% are FORBIDDEN)
+□ Only reference divisional charts (D-9, D-7, D-24) if explicitly listed in "SUPPLEMENTARY DATA" below
+□ DO NOT invent aspect names (Amrita Drishti, Parivraya Drishti, etc.) — stick to house significations
+□ If data is missing, respond with "Not Found — Requires [DATA NAME]" and request it transparently`;
+  }
+
+  else if (persona === 'classical_parashari') {
+    prompt = `You are a Classical Parashari Astrology Expert. You interpret House ${groundTruth.primaryHouse} (${groundTruth.houseDomain}) through the classical Parashari lens while respecting KP ground truths.
+
+✓✓✓ IMMUTABLE GROUND TRUTHS (MUST NOT CONTRADICT) ✓✓✓
+
+KP's Deterministic Verdict: {promise} ({confidenceScore}% confidence)
+Cusp Sub Lord (KP Method): {cuspSubLord}
+Active Dasha: {activeVimshottariDesc}
+Transit Status: {transitModulation}
+
+YOUR ROLE:
+Examine House ${groundTruth.primaryHouse} through Parashari lens (Phaladeepika, Brihat Jataka):
+- House lord strength and placement
+- Planetary yogas (Rajayoga, Bhairavas Yoga, Daridratva Yoga, etc.)
+- Rashi & Nakshatra dispositions
+- Vimshottari dasha promise
+
+CRITICAL CONSTRAINT:
+If your Parashari analysis leads to a DIFFERENT verdict than "{promise}", you MUST:
+1. Use the phrase: "PARASHARI ALTERNATIVE VIEW:" before stating the different verdict
+2. EXPLAIN the specific Parashari reasoning that contradicts KP (e.g., "Strong 7th lord Jupiter in Pisces suggests marriage promise, but KP's cusp analysis shows delay")
+3. Note that KP's {confidenceScore}% is the deterministic baseline; Parashari offers nuance, not override
+
+PROHIBITED:
+□ DO NOT state confidence scores different from {confidenceScore}% without flagging as "Parashari variant estimate"
+□ DO NOT invent D-7, D-9 placements not in "SUPPLEMENTARY DATA"
+□ DO NOT mention divisional chart harmonics unless the divisional charts are provided`;
+  }
+
+  else if (persona === 'vedic_divisional') {
+    prompt = `You are a Divisional Chart Specialist analyzing House ${groundTruth.primaryHouse} (${groundTruth.houseDomain}) across Vargas (divisional harmonics).
+
+✓✓✓ IMMUTABLE KP GROUND TRUTH ✓✓✓
+
+KP's Gatekeeper Verdict: {promise} ({confidenceScore}% confidence — DO NOT CHANGE)
+Cusp Sub Lord (D-1 Natal): {cuspSubLord}
+Active Dasha: {activeVimshottariDesc}
+
+YOUR ANALYSIS:
+Compare D-1 (natal) promise against divisional harmonics (D-9 Navamsha, D-7 Saptamsha, D-24 Chaturvimshamsha).
+- If divisional supports KP verdict: "Divisional harmony CONFIRMS {promise}"
+- If divisional contradicts: Flag as "DIVISIONAL DISSONANCE" and state what data would resolve it
+
+CRITICAL RULE — ONLY USE PROVIDED DIVISIONAL DATA:
+{divisionalDataStatus}
+
+If a divisional chart is NOT listed above, DO NOT state its placements.
+Example WRONG: "D-7 shows Jupiter in Pisces..." (if D-7 not provided)
+Example RIGHT: "D-7 cross-validation requires Mother's Lagna data. Awaiting supplementary chart..."
+
+CONFIDENCE LOCKING:
+The {confidenceScore}% represents D-1 (Rasi) confidence. Do NOT generate divisional-adjusted confidence scores`;
+  }
+
+  else if (persona === 'vedic_remedial') {
+    prompt = `You are a Vedic Remedies Specialist (Upaya & Puja Guidance) for House ${groundTruth.primaryHouse} (${groundTruth.houseDomain}).
+
+✓✓✓ VERIFIED KP VERDICT (BASIS FOR ALL REMEDIES) ✓✓✓
+
+Promise Status: {promise} ({confidenceScore}% confidence)
+Key Blocking/Supporting Factor: {cuspSubLord}
+Active Dasha Trigger: {activeVimshottariDesc}
+
+YOUR REMEDIAL STRATEGY:
+
+IF {promise} = YES:
+→ Offer GRAHA SHANTI (planet pacification) to strengthen benefics
+→ Recommend DAAN (charity) aligned to house lord's day (e.g., Friday for Venus)
+→ Suggest MANTRA JAPA (18,000 counts of relevant mantra)
+
+IF {promise} = DELAYED:
+→ Offer DASHA PACIFICATION remedies for the delaying planet
+→ Recommend FASTING (VRATA) on the cusp sub-lord's day
+→ Suggest PUJA/HAVAN aligned to house significators
+
+IF {promise} = NO:
+→ Offer ACCEPTANCE-BASED spiritual practice (meditation, Advaita philosophy)
+→ Alternative: COUNTER-REMEDIES (rare, only with strong benefic support)
+
+PROHIBITED RECOMMENDATIONS:
+□ DO NOT recommend fast-acting remedies if {promise} = DELAYED (contradicts timing)
+□ DO NOT prescribe gem stones (Ratna) for restrictive planets without explicit benefic support
+□ DO NOT reference divisional chart remedies unless D-7/D-9 data provided
+□ DO NOT invent remedy details — only cite classical texts (Phaladeepika, Brihaj Jataka)
+
+CONFIDENCE CALIBRATION:
+Remedies support the {confidenceScore}% confidence level. Stronger remedies for higher confidence promises.
+
+MANDATORY DISCLAIMER:
+Always include: "Remedies are supportive adjuncts, not guarantees. Timing depends on dasha & transit activation."`;
+  }
+
+  else if (persona === 'quick') {
+    prompt = `You are the **QUICK Astro Engine**, an expert Vedic Astrologer. Your task is to analyze the native's birth profile and transit (Gochara) data and generate a highly structured, comprehensive astrological analysis in **Telugu**.
+Your response must strictly follow the output template, written entirely in Telugu with clear headings, subheadings, and bullet points. Retain standard astrological terms (Lagna, Ucha, Neecha, Dasha, Gochara, Karaka) in traditional context, in Telugu script/transliteration.
+
+Active Profile is **{nativeName}**.
+${formatQuickDynamicProfile(groundTruth, nativeName)}
+
+ANALYSIS RULES:
+1. Natal/Dasha analysis from Lagna.
+${renderGocharaPromptBlock(computeLiveTransitSnapshot(resolveMoonSignForTransit(groundTruth)))}
+3. Translate all analysis into Telugu script, including standard terms.
+
+STRICT OUTPUT FORMATTING & CLIENT DELIVERY DIRECTIVES (MANDATORY):
+1. ABSOLUTELY NO RAW CODE TAGS: Do NOT output raw system variables or code tags like {activeVimshottariDesc}, {promise}, or {confidenceScore} in your text under any circumstances.
+2. ABSOLUTELY NO SYSTEM DIAGNOSTIC NOISE: Do NOT output internal system diagnostic flags or missing chart logs (e.g., "Not Found — Requires Mother's Lagna", "Requires D-24 Chaturvimshamsha", "MISSING DATA") in the report.
+3. STRICT TEMPLATE COMPLIANCE: You MUST strictly adhere to the exact [BEGIN OUTPUT TEMPLATE] structure below without creating custom section headers or arbitrary nested bullet structures.
+
+[BEGIN OUTPUT TEMPLATE]
+మీ చంద్ర రాశి [Insert Moon Sign] మరియు మీ పంచాంగం/గోచార ప్రకారం [Insert major transit like Saturn/Rahu/Jupiter], [Insert Lagna] లగ్నాన్ని మొదటి ఇల్లుగా తీసుకుని లగ్న కుండలి, దశా-అంతర్దశ, మరియు గోచార ఫలితాల సమగ్ర విశ్లేషణ కింద ఇవ్వబడింది.
+
+### 1. లగ్న కుండలి విశ్లేషణ (Lagna Kundali Analysis)
+
+* **1వ ఇల్లు ([Lagna Sign]):** [Planets and status]
+* **[X]వ ఇల్లు ([Sign]):** [Planets and status]
+
+### 2. దశా - అంతర్దశా విశ్లేషణ (Dasha - Antardasha Analysis)
+
+ప్రస్తుతం మీకు [Mahadasha Lord] మహర్దశలో [Antardasha Lord] అంతర్దశ నడుస్తోంది.
+
+* **మహర్దశ నాథుడు ([Lord]):** [Explain the lord's rulership from Lagna, its placement in the chart, and general themes/results it will produce.]
+* **అంతర్దశ నాథుడు ([Lord]):** [Explain the sub-lord's placement, conjunctions, and specific psychological or material effects on the native during this period.]
+
+### 3. గోచార విశ్లేషణ (Gochara Analysis - From Moon Sign [Moon Sign])
+
+* **[Area 1 - e.g., ఆర్థిక విషయాలు (Finance & Wealth)]:** [Explain how the transits affect this area.]
+* **[Area 2 - e.g., కుటుంబం మరియు మాటతీరు (Family & Speech)]:** [Explain how the transits affect this area.]
+* **[Area 3 - e.g., వృత్తి మరియు ఆరోగ్యం (Career & Health)]:** [Explain how the transits affect this area.]
+
+### 4. తుది విశ్లేషణ మరియు సూచనలు (Final Conclusion & Remedies)
+
+* **ముగింపు:** [Provide a 2-3 sentence summary synthesizing the Dasha and Gochara. Note the overall theme—whether it is a time for caution, growth, stability, etc.]
+* **పరిహారాలు:**
+* **[Remedy Name 1]:** [Instruction for remedy 1]
+* **[Remedy Name 2]:** [Instruction for remedy 2]
+* **[Remedy Name 3]:** [Instruction for remedy 3]
+[END OUTPUT TEMPLATE]
+`;
+  }
+
+  prompt = prompt
+    .replaceAll('{nativeName}', nativeName)
+    .replaceAll('{cuspSubLord}', groundTruth.cuspSubLord)
+    .replaceAll('{cuspSubLordHouses}', groundTruth.cuspSubLordHouses.join(', ') || 'Not Computed')
+    .replaceAll('{significators}', groundTruth.primarySignificators.join(', ') || 'None identified')
+    .replaceAll('{promise}', groundTruth.promise)
+    .replaceAll('{confidenceScore}', String(groundTruth.confidenceScore))
+    .replaceAll('{timing}', groundTruth.timing)
+    .replaceAll('{activeVimshottariDesc}', groundTruth.activeVimshottariDesc)
+    .replaceAll('{transitModulation}', groundTruth.transitModulation)
+    .replaceAll('{houseDomain}', groundTruth.houseDomain)
+    .replaceAll('{divisionalDataStatus}', buildDivisionalDataStatus(groundTruth));
+
+  prompt += `
+
+───────────────────────────────────────────────────────────────────────
+CRITICAL CLIENT DELIVERY & COMPLIANCE DIRECTIVES
+───────────────────────────────────────────────────────────────────────
+
+1. ABSOLUTE PROHIBITION ON CODE TAGS & PLACEHOLDERS:
+   Do NOT leave raw backend code tags or placeholders such as {activeVimshottariDesc}, {promise}, or {confidenceScore} exposed in the output text. All parameters must be replaced with clear natural language descriptions.
+
+2. ABSOLUTE PROHIBITION ON SYSTEM DIAGNOSTIC NOISE:
+   Do NOT output internal system diagnostic flags, missing data errors, or developer logs (such as "Not Found — Requires Mother's Lagna", "Requires D-24 Chaturvimshamsha", or "MISSING DATA") in the client response. Produce a clean, professional, client-ready report based on available chart data.
+
+3. STRICT ADHERENCE TO OUTPUT TEMPLATE:
+   Follow the required output template structure precisely. Do NOT add custom section headers, arbitrary nested sub-bullet levels, or unrequested structural variations.
+───────────────────────────────────────────────────────────────────────
+`;
+
+  return prompt;
+}
+
+function buildDivisionalDataStatus(gt: UnifiedKPGroundTruthWithDataFlags): string {
+  const available: string[] = [];
+  const missing: string[] = [];
+
+  if (gt.hasD9Data) available.push('D-9 Navamsha');
+  else missing.push('D-9 Navamsha (requires Mother\'s Lagna)');
+
+  if (gt.hasD7Data) available.push('D-7 Saptamsha');
+  else missing.push('D-7 Saptamsha (requires Mother\'s Lagna)');
+
+  if (gt.hasD24Data) available.push('D-24 Chaturvimshamsha');
+  else missing.push('D-24 Chaturvimshamsha');
+
+  let status = 'DIVISIONAL CHART DATA STATUS:\n';
+  if (available.length > 0) {
+    status += `Available: ${available.join(', ')}\n`;
+  }
+  if (missing.length > 0) {
+    status += `NOT Available: ${missing.join(', ')}\n`;
+  }
+
+  return status;
+}
+
+function buildDataRequestString(gt: UnifiedKPGroundTruthWithDataFlags): string {
+  const requests: string[] = [];
+
+  if (!gt.hasMotherChart && gt.topic === 'CHILDREN') {
+    requests.push('Mother\'s birth details (date, time, location) for D-7 Saptamsha analysis');
+  }
+  if (!gt.hasD7Data) {
+    requests.push('Mother\'s Lagna for D-7 cross-validation');
+  }
+  if (!gt.hasPratyantardasha) {
+    requests.push('Exact query moment (date & time) for Pratyantardasha precision');
+  }
+
+  return requests.length > 0 
+    ? requests.join('; ') 
+    : 'Additional chart data as needed for deeper analysis';
+}
+
+function buildChartDataValidation(gt: UnifiedKPGroundTruthWithDataFlags): string {
+  const checks: string[] = [
+    `✓ D-1 (Rasi/Natal): Available (computed ${gt.horoscopeDate})`
+  ];
+
+  if (!gt.hasMotherChart) {
+    checks.push(`✗ Mother's Chart: NOT Available (needed for D-7)`);
+  }
+  if (!gt.hasD7Data) {
+    checks.push(`✗ D-7 (Saptamsha): NOT Available`);
+  }
+  if (!gt.hasD9Data) {
+    checks.push(`✗ D-9 (Navamsha): NOT Available`);
+  }
+  if (!gt.hasPratyantardasha) {
+    checks.push(`✗ Pratyantardasha: NOT Available (use only Mahadasha → Antardasha)`);
+  }
+
+  return checks.join('\n');
+}
+
+export function buildSystemPrompt(
+  persona: ConsultationPersona,
+  groundTruth: UnifiedKPGroundTruth,
+  nativeName: string = 'Native'
+): string {
+  const gtWithFlags: UnifiedKPGroundTruthWithDataFlags = {
+    ...groundTruth,
+    primaryHouse: groundTruth.primaryHouse || 1,
+    missingDataItems: groundTruth.missingDataItems || []
+  };
+  return buildSystemPromptCorrected(persona, gtWithFlags, nativeName);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER FUNCTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function parseQueryToKPQuery(queryText: string): KPQuery {
+  const intentResult = KeywordMatcher.analyzeQuery(queryText);
+  if (intentResult && intentResult.domain) {
+    const domainToTopicMap: Record<string, TopicEnum> = {
+      MARRIAGE: 'MARRIAGE',
+      CAREER: 'CAREER',
+      FINANCE: 'FINANCE',
+      HEALTH: 'HEALTH',
+      EDUCATION: 'EDUCATION',
+      CHILDREN: 'CHILDREN',
+      PROPERTY: 'GENERAL',
+      LEGAL: 'GENERAL',
+      TRAVEL: 'GENERAL',
+      SPIRITUAL: 'GENERAL',
+      RELATIONSHIPS: 'MARRIAGE'
+    };
+    const topic = domainToTopicMap[intentResult.domain] || 'GENERAL';
+    return {
+      question: queryText,
+      topic,
+      relevantHouse: intentResult.primaryHouse || 1
+    };
+  }
+
+  const lower = queryText.toLowerCase();
+  if (lower.includes('marri') || lower.includes('spous') || lower.includes('wedding') || lower.includes('వివాహ') || lower.includes('పెళ్లి') || lower.includes('కళ్యాణ') || lower.includes('సంబంధం') || lower.includes('pelli') || lower.includes('vivaha')) {
+    return { question: queryText, topic: 'MARRIAGE', relevantHouse: 7 };
+  }
+  if (lower.includes('job') || lower.includes('career') || lower.includes('work') || lower.includes('ఉద్యోగ') || lower.includes('వ్యాపార') || lower.includes('పని') || lower.includes('udyog')) {
+    return { question: queryText, topic: 'CAREER', relevantHouse: 10 };
+  }
+  if (lower.includes('money') || lower.includes('wealth') || lower.includes('finan') || lower.includes('ధన') || lower.includes('డబ్బు') || lower.includes('ఆదాయ') || lower.includes('dabbu')) {
+    return { question: queryText, topic: 'FINANCE', relevantHouse: 2 };
+  }
+  if (lower.includes('health') || lower.includes('disease') || lower.includes('ఆరోగ్య') || lower.includes('జబ్బు') || lower.includes('వ్యాధి')) {
+    return { question: queryText, topic: 'HEALTH', relevantHouse: 1 };
+  }
+  if (lower.includes('educat') || lower.includes('study') || lower.includes('చదువు') || lower.includes('విద్య') || lower.includes('పరీక్ష')) {
+    return { question: queryText, topic: 'EDUCATION', relevantHouse: 5 };
+  }
+  if (lower.includes('child') || lower.includes('kid') || lower.includes('పిల్ల') || lower.includes('సంతాన') || lower.includes('గర్భ')) {
+    return { question: queryText, topic: 'CHILDREN', relevantHouse: 5 };
+  }
+  
+  return { question: queryText, topic: 'GENERAL', relevantHouse: 1 };
+}
+
+function getHouseDomainLabel(topic: TopicEnum): string {
+  const labels: Record<TopicEnum, string> = {
+    MARRIAGE: 'Marriage & Life Partnership (House VII)',
+    CAREER: 'Career & Professional Status (House X)',
+    FINANCE: 'Wealth & Financial Accumulation (House II)',
+    HEALTH: 'Health & Physical Vitality (House I)',
+    EDUCATION: 'Higher Education & Intelligence (House V)',
+    CHILDREN: 'Progeny & Children (House V)',
+    GENERAL: 'General Life Path & Well-Being (House I)'
+  };
+  return labels[topic] || labels.GENERAL;
+}
+
+function buildKPChartFromHoroscope(horoscope: any, birthDetails: BirthDetails): KPChart {
+  const rasi = horoscope?.horoscope?.divisional_charts?.['D-1_rasi'] || horoscope?.rasi || {};
+
+  const planetLongitudes: Record<string, number> = {};
+  const signMap: Record<string, number> = {
+    Aries: 0, Taurus: 1, Gemini: 2, Cancer: 3, Leo: 4, Virgo: 5,
+    Libra: 6, Scorpio: 7, Sagittarius: 8, Capricorn: 9, Aquarius: 10, Pisces: 11
+  };
+
+  Object.keys(rasi).forEach((key) => {
+    const item = rasi[key];
+    if (item && item.sign && typeof item.longitude === 'number') {
+      const sIdx = signMap[item.sign] ?? 0;
+      const absDeg = ((sIdx * 30 + item.longitude) % 360 + 360) % 360;
+      const stdKey = key === 'Ascendant' ? 'Lagna' : key;
+      planetLongitudes[stdKey] = absDeg;
+    }
+  });
+
+  const ascDegree = planetLongitudes.Lagna ?? 0;
+  const lat = birthDetails.latitude || 28.6139;
+  const houses = calculatePlacidusCusps(ascDegree, lat, birthDetails.date || '1996-11-01', birthDetails.time || '12:00');
+
+  const planetNames = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
+  const planets = planetNames.map((pName) => {
+    const deg = planetLongitudes[pName] ?? 180;
+    const subLordChain = calculateKPSubLord(deg);
+    const occupiedHouse = getHouseOccupied(deg, houses);
+    return {
+      name: pName,
+      sign: subLordChain.sign,
+      degree: deg,
+      formattedDegree: `${Math.floor(deg % 30)}°`,
+      signLord: subLordChain.signLord,
+      starLord: subLordChain.starLord,
+      subLord: subLordChain.subLord,
+      subSubLord: subLordChain.subSubLord,
+      significatorOf: [occupiedHouse]
+    };
+  });
+
+  const { houseSignificators, planetSignificators } = analyzeSignificators(planets, houses);
+  const rulingPlanets = calculateRulingPlanets(undefined, undefined, lat, birthDetails.longitude || 77.2090);
+
+  const moonDeg = planetLongitudes.Moon ?? 0;
+  const calculatedDasha = calculateVimshottariDashaFromMoon(moonDeg, `${birthDetails.date} ${birthDetails.time}`, new Date(), horoscope);
+
+  return {
+    birthData: {
+      name: birthDetails.name || 'Native',
+      gender: String(birthDetails.gender).toLowerCase() === 'female' ? 'Female' : 'Male',
+      date: birthDetails.date || '1996-11-01',
+      time: birthDetails.time || '12:00',
+      place: (birthDetails as any).placeOfBirth || birthDetails.place || 'New Delhi',
+      latitude: birthDetails.latitude || 28.6139,
+      longitude: birthDetails.longitude || 77.2090,
+      timezone: birthDetails.timezone || 5.5
+    },
+    planets,
+    houses,
+    rulingPlanets,
+    currentDasha: {
+      mahadasha: calculatedDasha.mahadasha,
+      antardasha: calculatedDasha.antardasha,
+      pratyantardasha: calculatedDasha.pratyantardasha,
+      mahadashaEnd: calculatedDasha.mahadashaEnd,
+      antardashaEnd: calculatedDasha.antardashaEnd
+    },
+    houseSignificators,
+    planetSignificators
+  };
+}
+
+function resolvePlanetLord(sign: string): string {
+  const match = ZODIAC_SIGNS.find(s => s.name.toLowerCase() === sign.toLowerCase());
+  return match?.lord || 'Mars';
+}
+
+function calculateHouseFromSign(sign: string): number {
+  const signMap: Record<string, number> = {
+    Aries: 1, Taurus: 2, Gemini: 3, Cancer: 4, Leo: 5, Virgo: 6,
+    Libra: 7, Scorpio: 8, Sagittarius: 9, Capricorn: 10, Aquarius: 11, Pisces: 12
+  };
+  return signMap[sign] || 1;
+}
