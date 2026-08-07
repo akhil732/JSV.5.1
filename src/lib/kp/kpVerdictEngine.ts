@@ -2,6 +2,7 @@ import { KPChart, KPQuery, KPVerdict, KPVerdictStep, TopicEnum } from '../../typ
 import { QueryAnalysisResult, GatekeeperVerdict } from './queryIntent';
 import { QueryIntentRecognizer } from './queryIntentRecognizer';
 import { lookupTriplePlanetProfession, getBusinessSuitability } from './professionalSignificators';
+import { computeLiveTransitSnapshot } from '../engines/LiveTransitEngine';
 
 // Benefic vs Malefic house relationships per topic
 export const HOUSE_RULES: Record<TopicEnum, { primary: number; favorable: number[]; unfavorable: number[] }> = {
@@ -58,8 +59,20 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
   // STEP 7: Cross-Validate with Vedic (D-9 alignment)
   const vedicAligned = true;
 
-  // STEP 8: Confirm with Transit
-  const transitSupported = !hasUnfavorable || activeBhukti === 'Jupiter' || activeBhukti === 'Venus';
+  // STEP 8: Confirm with Transit using LiveTransitEngine
+  const moonSign = chart.rulingPlanets?.moonSign || chart.planets.find(p => p.name === 'Moon' || p.name === 'Chandra')?.sign || 'Aries';
+  const queryDate = query.targetDate ? new Date(query.targetDate) : new Date();
+  const transitSnapshot = computeLiveTransitSnapshot(moonSign, queryDate);
+  const transitJupiter = transitSnapshot.positions.Jupiter;
+  const transitSaturn = transitSnapshot.positions.Saturn;
+  
+  const jupiterClass = transitJupiter?.classification || 'Neutral';
+  const saturnClass = transitSaturn?.classification || 'Neutral';
+  
+  // Transit is supportive if Jupiter or Saturn is supportive, or both are neutral
+  const transitSupported = jupiterClass === 'Supportive' || saturnClass === 'Supportive' || (jupiterClass === 'Neutral' && saturnClass === 'Neutral');
+  
+  const transitExplanationText = `Jupiter is transiting ${transitJupiter?.sign || 'N/A'} (House ${transitJupiter?.houseFromMoon || 1} from Moon: ${jupiterClass}) and Saturn is transiting ${transitSaturn?.sign || 'N/A'} (House ${transitSaturn?.houseFromMoon || 1} from Moon: ${saturnClass})`;
 
   // 5-Factor Confidence Model Calculation
   const gatekeeperScore = !isFavorable ? 0.0 : hasUnfavorable ? 0.5 : 1.0;
@@ -178,8 +191,8 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
       stepNumber: 8,
       title: 'Transit Confirmation',
       description: transitSupported
-        ? 'Jupiter and Saturn transit positions support event manifestation.'
-        : 'Transit requires waiting for auspicious planetary angles.',
+        ? `Jupiter and Saturn transit positions support event manifestation: ${transitExplanationText}.`
+        : `Transit requires waiting for auspicious planetary angles: ${transitExplanationText}.`,
       status: transitSupported ? 'PASSED' : 'WARNING',
       textbookRef: 'KP Reader V, p. 6110'
     }
@@ -235,7 +248,7 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
       cuspSubLordHouses: uniqueSubLordHouses,
       significators: primarySignificators,
       dashaStatus: `${currentDasha.mahadasha} Mahadasha - ${currentDasha.antardasha} Bhukti (Active)`,
-      transitSupport: transitSupported ? 'Saturn & Jupiter transits support manifestation with patience' : 'Transit requires cautious decision-making',
+      transitSupport: transitSupported ? `Saturn & Jupiter transits support manifestation with patience: ${transitExplanationText}` : `Transit requires cautious decision-making: ${transitExplanationText}`,
       vedicSupport: 'D-1 & D-9 alignment confirms structural strength of natal promise'
     }
   };
