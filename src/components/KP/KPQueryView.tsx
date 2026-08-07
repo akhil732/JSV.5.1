@@ -20,7 +20,7 @@ interface KPQueryViewProps {
 export interface VerdictCheckpoint {
   step: number;
   title: string;
-  status: 'Passed' | 'Favorable' | 'Confirmed' | 'Requires Caution' | 'Awaiting Movement';
+  status: 'Passed' | 'Favorable' | 'Confirmed' | 'Requires Caution' | 'Awaiting Movement' | 'Not Verified';
   note: string;
 }
 
@@ -333,6 +333,7 @@ function VerdictCard({ verdict, C }: { verdict: VerdictData; C: ReturnType<typeo
     Confirmed: { text: C.skyText, bg: C.skyBg, border: C.skyBorder },
     'Requires Caution': { text: C.amberText, bg: C.amberBg, border: C.amberBorder },
     'Awaiting Movement': { text: C.amberText, bg: C.amberBg, border: C.amberBorder },
+    'Not Verified': { text: C.skyText, bg: C.skyBg, border: C.skyBorder },
   };
 
   const st = STATUS_CONFIG[verdict.status] || STATUS_CONFIG.NO;
@@ -739,9 +740,18 @@ export const KPQueryView: React.FC<KPQueryViewProps> = ({ chart: propsChart, bir
         const summary = nativeResult.gatekeeperVerdict.reasoning ||
           `House ${targetHouse} (${bhavaInfo?.sanskritName || 'Bhava'}) cusp sub-lord ${nativeResult.houseCuspSubLord} indicates a ${nativeResult.gatekeeperVerdict.status.toLowerCase()} outcome for ${nativeResult.intent.domain.toLowerCase()}. The active ${mahadashaStr}-${antardashaStr} dasha period operates as the primary timing driver for this matter.`;
 
-        // Formulate Hurdles Note
+        // Formulate Hurdles Note. Prefer the verdict engine's actual,
+        // topic-specific obstacle text (e.g. retrograde significators,
+        // D-9 conflicts, malefic cusp connections for THIS domain) over a
+        // hardcoded generic message. The old fallback text talked about
+        // "legal terms, paperwork, financial commitments" for every domain
+        // — including children/health/education queries where that phrasing
+        // makes no sense. Only fall back to the generic wording if the
+        // engine genuinely produced no obstacle text.
         const hurdlesNote = hasHurdles
-          ? `Cusp sub lord (${nativeResult.houseCuspSubLord}) connects with challenging influences. Exercise caution with legal terms, paperwork, or financial commitments before finalizing.`
+          ? (nativeResult.obstacles && nativeResult.obstacles.length > 0
+              ? nativeResult.obstacles.join(' ')
+              : `Cusp sub lord (${nativeResult.houseCuspSubLord}) connects with challenging influences for this matter. Proceed with caution before finalizing decisions.`)
           : '';
 
         // Formulate Checkpoint List
@@ -752,6 +762,12 @@ export const KPQueryView: React.FC<KPQueryViewProps> = ({ chart: propsChart, bir
             else cpStatus = 'Passed';
           } else if (step.status === 'WARNING' || step.status === 'FAILED') {
             cpStatus = 'Requires Caution';
+          } else if (step.status === 'NEUTRAL') {
+            // e.g. Step 7 D-9 check when no navamsa data was supplied — this
+            // was previously falling into a catch-all that labeled it
+            // "Favorable", implying a positive result for a check that was
+            // explicitly SKIPPED. "Not Verified" reflects reality.
+            cpStatus = 'Not Verified';
           } else {
             cpStatus = 'Favorable';
           }

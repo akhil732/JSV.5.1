@@ -73,6 +73,57 @@ export const ADAM_PLANET_SIGNIFICATORS: Record<string, PlanetSignificatorLevels>
 };
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * getRankedSignificators — STRENGTH-ORDERED 4-LEVEL SIGNIFICATORS
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * KP textbook ranking for a house's significators (strongest to weakest):
+ *   1. Planets in the star of an occupant of the house   (occupant's star lord)
+ *   2. Occupants of the house
+ *   3. Planets in the star of the owner of the house     (owner's star lord)
+ *   4. Owner of the house
+ *
+ * `analyzeSignificators()` only returns a de-duplicated, unordered Set of
+ * every planet touching the house at any level. Consumers (kpVerdictEngine)
+ * were doing `.slice(0, 2)` on that unordered array, which silently picked
+ * whichever two planets happened to iterate first — not the two strongest
+ * significators per KP rules. This function walks planetSignificators level
+ * by level (1 -> 2 -> 3 -> 4) and returns planets in genuine textbook
+ * priority order, each appearing once at its strongest level.
+ *
+ * Retrograde planets are still valid significators in KP (retrogression does
+ * not remove significatorship) but they are flagged so callers can weight
+ * timing/confidence accordingly instead of treating them identically to
+ * direct planets.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
+export function getRankedSignificators(
+  house: number,
+  planetSignificators: Record<string, PlanetSignificatorLevels>,
+  planets?: KPPlanet[]
+): { planet: string; level: 1 | 2 | 3 | 4; isRetrograde: boolean }[] {
+  const result: { planet: string; level: 1 | 2 | 3 | 4; isRetrograde: boolean }[] = [];
+  const seen = new Set<string>();
+  const levels: (keyof PlanetSignificatorLevels)[] = ['level1', 'level2', 'level3', 'level4'];
+
+  levels.forEach((levelKey, idx) => {
+    Object.entries(planetSignificators).forEach(([planetName, levelData]) => {
+      if (seen.has(planetName)) return;
+      if (levelData[levelKey]?.includes(house)) {
+        const p = planets?.find((pl) => pl.name === planetName);
+        result.push({
+          planet: planetName,
+          level: (idx + 1) as 1 | 2 | 3 | 4,
+          isRetrograde: !!p?.isRetrograde
+        });
+        seen.add(planetName);
+      }
+    });
+  });
+
+  return result;
+}
+
+/**
  * Calculates KP house and planet significators dynamically
  */
 export function analyzeSignificators(

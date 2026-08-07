@@ -106,6 +106,14 @@ export interface QueryAnalysisResult {
   timing: any; // Can be string or structured timing object
   analysisSteps: any[];  // Steps can be KPVerdictStep[] or string[]
   confidence: number;       // Overall confidence (0-100)
+  /**
+   * Topic-specific obstacle/caution text produced by the verdict engine
+   * (e.g. retrograde significators, malefic cusp connections, D-9
+   * conflicts). Prefer this over any hardcoded generic caution string —
+   * it reflects the actual topic (children/career/marriage/etc.), not a
+   * one-size-fits-all "legal/financial paperwork" message.
+   */
+  obstacles?: string[];
   requiredClarification?: {
     question: string;
     options: string[];

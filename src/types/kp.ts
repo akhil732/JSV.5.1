@@ -97,6 +97,13 @@ export interface KPChart {
   currentDasha: DashaInfo;
   houseSignificators: Record<number, string[]>;
   planetSignificators: Record<string, PlanetSignificatorLevels>;
+  /**
+   * Optional D-9 (Navamsa) planetary positions. When present, the verdict
+   * engine performs a genuine Vedic cross-validation (Step 7) instead of
+   * reporting a hardcoded pass. Consumers building KPChart objects should
+   * populate this from the D9 divisional chart when available.
+   */
+  navamsaPlanets?: KPPlanet[];
 }
 
 export interface KPQuery {
@@ -150,6 +157,14 @@ export interface KPVerdict {
     reassurance: string;
     actionPlan: string;
   };
+  /**
+   * Surfaces data-completeness issues that affected this verdict (e.g. no
+   * D9 data supplied, no significators found for the house, missing dasha
+   * info that forced a fallback). Empty array means no known gaps. This
+   * replaces prior silent fallbacks so callers/UI can flag low-trust
+   * verdicts instead of presenting them with false confidence.
+   */
+  dataQualityWarnings?: string[];
 }
 
 export interface DomainPrediction {

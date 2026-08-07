@@ -3,6 +3,80 @@ import { QueryAnalysisResult, GatekeeperVerdict } from './queryIntent';
 import { QueryIntentRecognizer } from './queryIntentRecognizer';
 import { lookupTriplePlanetProfession, getBusinessSuitability } from './professionalSignificators';
 import { computeLiveTransitSnapshot } from '../engines/LiveTransitEngine';
+import { getRankedSignificators } from './significatorAnalyzer';
+import { evaluateCuspPromise, HouseNumber } from './gatekeeperRules';
+import { AppError, ErrorCode } from '../errors/AppError';
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * validateChartForVerdict — replaces silent fallback corruption with visible warnings
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * Previously, missing chart data was papered over with hardcoded fallbacks
+ * (`|| { mahadasha: 'Mercury', ... }`, `|| ['Jupiter', 'Venus']`, a bare
+ * `chart.houses[0]` when a house lookup failed). Those fallbacks let a
+ * verdict compute — and look fully confident — even when the underlying
+ * chart data was incomplete or malformed. This function runs the checks up
+ * front: hard failures throw (the caller has no usable chart), soft gaps are
+ * collected and surfaced on the verdict via `dataQualityWarnings` so no
+ * downstream consumer can mistake a degraded verdict for a solid one.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
+function validateChartForVerdict(chart: KPChart, targetHouse: number): string[] {
+  const warnings: string[] = [];
+
+  if (!chart) {
+    throw new AppError(
+      ErrorCode.CHART_NOT_FOUND,
+      'generateKPVerdict called with no chart',
+      'Your chart could not be loaded. Please recompute it and try again.'
+    );
+  }
+  if (!Array.isArray(chart.houses) || chart.houses.length !== 12) {
+    throw new AppError(
+      ErrorCode.CHART_NOT_FOUND,
+      `KPChart.houses is invalid (expected 12 cusps, got ${chart.houses?.length ?? 0})`,
+      'Your chart data is incomplete (missing house cusps). Please recompute your chart.'
+    );
+  }
+  if (!Array.isArray(chart.planets) || chart.planets.length < 7) {
+    throw new AppError(
+      ErrorCode.CHART_NOT_FOUND,
+      `KPChart.planets is invalid (got ${chart.planets?.length ?? 0} planets)`,
+      'Your chart data is incomplete (missing planetary positions). Please recompute your chart.'
+    );
+  }
+
+  const cusp = chart.houses.find((h) => h.number === targetHouse);
+  if (!cusp) {
+    warnings.push(`House ${targetHouse} cusp not found in chart; falling back to House 1 lagna cusp.`);
+  } else if (!cusp.subLord) {
+    warnings.push(`House ${targetHouse} cusp is missing a computed sub lord; gatekeeper evaluation may be unreliable.`);
+  }
+
+  if (!chart.currentDasha || !chart.currentDasha.mahadasha || !chart.currentDasha.antardasha) {
+    warnings.push('Current Dasha/Bhukti period is missing from the chart; timing analysis (Step 6) uses an unverified fallback and should not be trusted for exact dates.');
+  }
+
+  if (!chart.houseSignificators || !chart.houseSignificators[targetHouse] || chart.houseSignificators[targetHouse].length === 0) {
+    warnings.push(`No significators were computed for House ${targetHouse}; Step 4/5 significator analysis is unavailable and the verdict relies on the gatekeeper and dasha checks alone.`);
+  }
+
+  if (!chart.planetSignificators || Object.keys(chart.planetSignificators).length === 0) {
+    warnings.push('4-level planet significator table is empty; ranked significator ordering could not be computed.');
+  }
+
+  if (!chart.navamsaPlanets || chart.navamsaPlanets.length === 0) {
+    warnings.push('No D-9 (Navamsa) data supplied; Step 7 Vedic cross-validation is skipped rather than assumed true.');
+  }
+
+  return warnings;
+}
+
+const SIGN_LORD_BY_NAME: Record<string, string> = {
+  Aries: 'Mars', Taurus: 'Venus', Gemini: 'Mercury', Cancer: 'Moon',
+  Leo: 'Sun', Virgo: 'Mercury', Libra: 'Venus', Scorpio: 'Mars',
+  Sagittarius: 'Jupiter', Capricorn: 'Saturn', Aquarius: 'Saturn', Pisces: 'Jupiter'
+};
 
 // Benefic vs Malefic house relationships per topic
 export const HOUSE_RULES: Record<TopicEnum, { primary: number; favorable: number[]; unfavorable: number[] }> = {
@@ -23,41 +97,99 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
   const houseRule = HOUSE_RULES[topic] || HOUSE_RULES.GENERAL;
   const targetHouse = query.relevantHouse || houseRule.primary;
 
+  // Validate chart completeness up front. Hard failures throw; soft gaps
+  // are collected and surfaced on the returned verdict instead of being
+  // silently patched over.
+  const dataQualityWarnings = validateChartForVerdict(chart, targetHouse);
+
   // STEP 1: Identify Relevant House
   const cusp = chart.houses.find((h) => h.number === targetHouse) || chart.houses[0];
   const cuspSubLord = cusp.subLord;
 
   // Retrieve Cusp Sub Lord significations across all 4 levels
-  const subLordLevels = chart.planetSignificators[cuspSubLord] || { level1: [], level2: [], level3: [], level4: [] };
+  const subLordLevels = chart.planetSignificators?.[cuspSubLord] || { level1: [], level2: [], level3: [], level4: [] };
   const subLordSignificances = [
     ...subLordLevels.level1,
     ...subLordLevels.level2,
     ...subLordLevels.level3,
     ...subLordLevels.level4
   ];
-  const uniqueSubLordHouses = Array.from(new Set(subLordSignificances));
+  const uniqueSubLordHouses = Array.from(new Set(subLordSignificances)) as number[];
 
-  // STEP 2 & 3: Cusp Sub Lord Gatekeeper Evaluation
-  const isFavorable = uniqueSubLordHouses.some((h) => houseRule.favorable.includes(h));
-  const hasUnfavorable = uniqueSubLordHouses.some((h) => houseRule.unfavorable.includes(h));
-  const gatekeeperOpen = isFavorable && !(!isFavorable && hasUnfavorable);
+  // STEP 2 & 3: Cusp Sub Lord Gatekeeper Evaluation.
+  // Uses the real per-house benefic/malefic significator matrix from
+  // gatekeeperRules.ts (Prof. K.S. Krishnamurti's textbook classification
+  // for each of the 12 houses) rather than the coarse per-topic
+  // favorable/unfavorable lists, which conflated "house selection for this
+  // topic" with "what's structurally benefic for THIS house's cusp".
+  const gatekeeperAnalysis = evaluateCuspPromise(
+    targetHouse as HouseNumber,
+    cuspSubLord,
+    uniqueSubLordHouses as HouseNumber[]
+  );
+  const isFavorable = gatekeeperAnalysis.beneficCount > 0;
+  const hasUnfavorable = gatekeeperAnalysis.maleficCount > 0;
+  // Gate is open only when the cusp sub lord isn't structurally denying the
+  // event (NO). DELAYED still lets analysis proceed with caution flags.
+  const gatekeeperOpen = gatekeeperAnalysis.promise !== 'NO';
 
-  // STEP 4: Identify Primary Significators (4 levels distinguished)
-  const primarySignificators = chart.houseSignificators[targetHouse] || ['Jupiter', 'Venus'];
+  // Cross-check against the simpler per-topic favorable/unfavorable list too,
+  // since some topics (e.g. MARRIAGE house selection) rely on it for house
+  // targeting even though the matrix above governs the actual promise.
+  const topicFavorableOverlap = uniqueSubLordHouses.some((h) => houseRule.favorable.includes(h));
 
-  // STEP 5: Check Significators' Sub Lords
-  const sigSubLordsHealthy = primarySignificators.slice(0, 2).every((pName) => {
-    const p = chart.planets.find((pl) => pl.name === pName);
-    return p ? !['Saturn', 'Rahu', 'Ketu'].includes(p.subLord) : true;
-  });
+  // STEP 4: Identify Primary Significators, ranked by real KP 4-level
+  // strength order (occupant's star lord > occupant > owner's star lord >
+  // owner), not an arbitrary Set iteration order. No hardcoded
+  // ['Jupiter', 'Venus'] fallback — an empty result is now a visible
+  // dataQualityWarnings entry instead of a fabricated answer.
+  const rankedSignificators = getRankedSignificators(targetHouse, chart.planetSignificators || {}, chart.planets);
+  const primarySignificators = rankedSignificators.length > 0
+    ? rankedSignificators.map((s) => s.planet)
+    : (chart.houseSignificators?.[targetHouse] || []);
+  const topSignificators = rankedSignificators.slice(0, 2);
+  const retrogradeTopSignificators = topSignificators.filter((s) => s.isRetrograde).map((s) => s.planet);
+
+  // STEP 5: Check Significators' Sub Lords, now also penalizing retrograde
+  // top-level (Level 1/2) significators. Retrogression doesn't remove
+  // significatorship in KP, but a retrograde planet acting as a primary
+  // timing trigger is traditionally read as introducing revision/delay, so
+  // it is scored rather than silently ignored as the previous version did.
+  const sigSubLordsClean = topSignificators.length > 0
+    ? topSignificators.every((s) => {
+        const p = chart.planets.find((pl) => pl.name === s.planet);
+        return p ? !['Saturn', 'Rahu', 'Ketu'].includes(p.subLord) : true;
+      })
+    : true;
+  const sigSubLordsHealthy = sigSubLordsClean && retrogradeTopSignificators.length === 0;
 
   // STEP 6: Check Active Dasha (Timing Trigger)
   const currentDasha = chart.currentDasha || { mahadasha: 'Mercury', antardasha: 'Venus', antardashaEnd: '2028-12-31' };
   const activeBhukti = currentDasha.antardasha;
   const isBhuktiSignificator = primarySignificators.includes(activeBhukti);
+  const bhuktiPlanet = chart.planets?.find((p) => p.name === activeBhukti);
+  const bhuktiRetrograde = !!bhuktiPlanet?.isRetrograde;
 
-  // STEP 7: Cross-Validate with Vedic (D-9 alignment)
-  const vedicAligned = true;
+  // STEP 7: Cross-Validate with Vedic (D-9 / Navamsa alignment).
+  // Previously hardcoded to `true` regardless of any actual data — this
+  // silently reported "PASSED" for a check that was never run. Now: if
+  // navamsa data was supplied on the chart, a real check is performed
+  // (does the natal cusp sub lord occupy a supportive house from its own
+  // D-9 position); if not, the step is explicitly marked NEUTRAL/unverified
+  // rather than a false PASSED, and it is excluded from the confidence math
+  // instead of inflating it.
+  const navamsaPlanet = chart.navamsaPlanets?.find((p) => p.name === cuspSubLord);
+  const d9DataAvailable = !!chart.navamsaPlanets && chart.navamsaPlanets.length > 0 && !!navamsaPlanet;
+  // Without a full D-9 lagna/cusp system we can't derive "house from D-9
+  // ascendant" directly, so the check that IS honest to perform with just
+  // navamsa planet positions is textbook-supported: does the cusp sub
+  // lord's D-9 sign lord agree with (i.e. appear among) the house's own
+  // natal primary significators? Agreement between D-1 promise-giver and
+  // its D-9 dispositor is the standard "Vedic confirms KP" cross-check.
+  const navamsaSignLord = navamsaPlanet ? SIGN_LORD_BY_NAME[navamsaPlanet.sign] : undefined;
+  const vedicAligned = d9DataAvailable
+    ? !!navamsaSignLord && (primarySignificators.includes(navamsaSignLord) || navamsaSignLord === cuspSubLord)
+    : null; // null = not verified, distinct from a false "true"
 
   // STEP 8: Confirm with Transit using LiveTransitEngine
   const moonSign = chart.rulingPlanets?.moonSign || chart.planets.find(p => p.name === 'Moon' || p.name === 'Chandra')?.sign || 'Aries';
@@ -74,14 +206,28 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
   
   const transitExplanationText = `Jupiter is transiting ${transitJupiter?.sign || 'N/A'} (House ${transitJupiter?.houseFromMoon || 1} from Moon: ${jupiterClass}) and Saturn is transiting ${transitSaturn?.sign || 'N/A'} (House ${transitSaturn?.houseFromMoon || 1} from Moon: ${saturnClass})`;
 
-  // 5-Factor Confidence Model Calculation
+  // 5-Factor Confidence Model Calculation.
+  // significatorScore now degrades further when top significators are
+  // retrograde (previously retrograde was only mentioned in the obstacles
+  // list, never actually affecting the numeric score). dashaScore is
+  // similarly softened when the active Bhukti lord itself is retrograde,
+  // since KP treats a retrograde dasha lord as prone to revision/reversal
+  // of the expected result.
   const gatekeeperScore = !isFavorable ? 0.0 : hasUnfavorable ? 0.5 : 1.0;
-  const significatorScore = sigSubLordsHealthy ? 1.0 : 0.6;
-  const dashaScore = isBhuktiSignificator ? 1.0 : 0.75;
+  const significatorScore = sigSubLordsHealthy
+    ? 1.0
+    : retrogradeTopSignificators.length > 0
+      ? 0.45
+      : 0.6;
+  const dashaScore = isBhuktiSignificator ? (bhuktiRetrograde ? 0.85 : 1.0) : (bhuktiRetrograde ? 0.6 : 0.75);
   const transitScore = transitSupported ? 0.9 : 0.5;
-  const vedicScore = vedicAligned ? 0.95 : 0.6;
+  // vedicScore: when D-9 data is unavailable (vedicAligned === null) the
+  // step is excluded from the confidence average entirely rather than
+  // assigning it a fabricated pass/fail value.
+  const vedicScore = vedicAligned === null ? null : (vedicAligned ? 0.95 : 0.6);
 
-  const rawConfidence = (gatekeeperScore + significatorScore + dashaScore + transitScore + vedicScore) / 5;
+  const activeFactors = [gatekeeperScore, significatorScore, dashaScore, transitScore, ...(vedicScore !== null ? [vedicScore] : [])];
+  const rawConfidence = activeFactors.reduce((a, b) => a + b, 0) / activeFactors.length;
   const confidenceScore = Math.round(rawConfidence * 100);
 
   // Formulate Verdict Promise
@@ -106,14 +252,29 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
   // Identify Obstacles / Counter-Indicators
   const obstacles: string[] = [];
   if (hasUnfavorable) {
-    obstacles.push(`Cusp sub lord ${cuspSubLord} connects to challenging house(s): [${uniqueSubLordHouses.filter(h => houseRule.unfavorable.includes(h)).join(', ')}]`);
+    // Uses the same per-house textbook malefic matrix that evaluateCuspPromise
+    // applied above, rather than the coarser topic-level list, so this text
+    // matches the actual gatekeeper reasoning instead of a different rule set.
+    obstacles.push(`Cusp sub lord ${cuspSubLord} signifies houses [${uniqueSubLordHouses.join(', ')}] — ${gatekeeperAnalysis.reasoning}`);
   }
   const retroPlanets = chart.planets.filter(p => p.isRetrograde).map(p => p.name);
   if (retroPlanets.length > 0) {
     obstacles.push(`Retrograde motion detected in natal chart (${retroPlanets.join(', ')}), advising patient timing`);
   }
+  if (retrogradeTopSignificators.length > 0) {
+    obstacles.push(`Primary significator(s) ${retrogradeTopSignificators.join(', ')} for House ${targetHouse} are retrograde, indicating the outcome may be revised, delayed, or repeat before finalizing`);
+  }
+  if (bhuktiRetrograde) {
+    obstacles.push(`Active Bhukti lord (${activeBhukti}) is retrograde, which traditionally signals reconsideration or reversal risk during this period`);
+  }
   if (!isBhuktiSignificator) {
-    obstacles.push(`Active Bhukti lord (${activeBhukti}) is not a primary Level-1 significator for House ${targetHouse}`);
+    obstacles.push(`Active Bhukti lord (${activeBhukti}) is not a primary significator for House ${targetHouse}`);
+  }
+  if (vedicAligned === false) {
+    obstacles.push(`D-9 Navamsa placement of cusp sub lord ${cuspSubLord} does not corroborate the natal (D-1) promise; treat this verdict with added caution`);
+  }
+  if (isFavorable && !topicFavorableOverlap) {
+    obstacles.push(`Cusp sub lord ${cuspSubLord} is benefic per house-level classification but doesn't overlap with the ${topic} topic's typical favorable houses [${houseRule.favorable.join(', ')}]; verify this house selection matches the querent's actual question`);
   }
 
   // Construct Alternative Scenarios
@@ -160,7 +321,9 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
     {
       stepNumber: 4,
       title: 'Identify 4-Level Significators',
-      description: `Primary significators for House ${targetHouse}: ${primarySignificators.join(', ')} across star lords, occupants, and owners.`,
+      description: primarySignificators.length > 0
+        ? `Primary significators for House ${targetHouse}, ranked strongest-to-weakest: ${primarySignificators.join(', ')} (star lords of occupants > occupants > star lords of owner > owner).`
+        : `No significators could be computed for House ${targetHouse} — chart's significator table is missing or empty for this house.`,
       status: primarySignificators.length > 0 ? 'PASSED' : 'WARNING',
       textbookRef: 'KP Reader V, p. 7093'
     },
@@ -183,8 +346,12 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
     {
       stepNumber: 7,
       title: 'Vedic D-9 Cross-Validation',
-      description: 'Navamsa (D-9) placement confirms natal promise stability.',
-      status: 'PASSED',
+      description: vedicAligned === null
+        ? 'D-9 (Navamsa) data was not supplied for this chart — this check was skipped and excluded from the confidence score rather than assumed to pass.'
+        : vedicAligned
+          ? `Navamsa placement of cusp sub lord ${cuspSubLord} (dispositor ${navamsaSignLord}) corroborates the natal promise.`
+          : `Navamsa placement of cusp sub lord ${cuspSubLord} (dispositor ${navamsaSignLord}) does NOT corroborate the natal promise — Vedic cross-check is weak.`,
+      status: vedicAligned === null ? 'NEUTRAL' : vedicAligned ? 'PASSED' : 'WARNING',
       textbookRef: 'KP Reader VI, p. 5520'
     },
     {
@@ -237,7 +404,7 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
       significatorScore,
       dashaScore,
       transitScore,
-      vedicScore
+      vedicScore: vedicScore ?? 0
     },
     explanation,
     steps,
@@ -247,10 +414,15 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
       cuspSubLord,
       cuspSubLordHouses: uniqueSubLordHouses,
       significators: primarySignificators,
-      dashaStatus: `${currentDasha.mahadasha} Mahadasha - ${currentDasha.antardasha} Bhukti (Active)`,
+      dashaStatus: `${currentDasha.mahadasha} Mahadasha - ${currentDasha.antardasha} Bhukti (Active)${bhuktiRetrograde ? ' [Retrograde]' : ''}`,
       transitSupport: transitSupported ? `Saturn & Jupiter transits support manifestation with patience: ${transitExplanationText}` : `Transit requires cautious decision-making: ${transitExplanationText}`,
-      vedicSupport: 'D-1 & D-9 alignment confirms structural strength of natal promise'
-    }
+      vedicSupport: vedicAligned === null
+        ? 'D-9 data unavailable; Vedic cross-validation not performed for this verdict'
+        : vedicAligned
+          ? 'D-1 & D-9 alignment confirms structural strength of natal promise'
+          : 'D-9 placement diverges from D-1 promise; structural strength is uncertain'
+    },
+    dataQualityWarnings
   };
 }
 
@@ -275,6 +447,13 @@ export class KPVerdictEngine {
     else if (intent.domain === 'MARRIAGE') topic = 'MARRIAGE';
     else if (intent.domain === 'HEALTH') topic = 'HEALTH';
     else if (intent.domain === 'EDUCATION') topic = 'EDUCATION';
+    else if (intent.domain === 'CHILDREN') topic = 'CHILDREN';
+    // NOTE: LifeDomain also includes PROPERTY / LEGAL / TRAVEL / SPIRITUAL /
+    // RELATIONSHIPS, which have no matching TopicEnum/HOUSE_RULES entry yet
+    // and correctly fall through to GENERAL below — that part is intentional,
+    // not a bug. CHILDREN, however, DOES have a HOUSE_RULES entry (see
+    // above) and was simply missing from this chain, silently downgrading
+    // every "children" query to GENERAL topic/explanation text.
 
     // 3. Generate base verdict
     const baseVerdict = generateKPVerdict(
@@ -326,6 +505,7 @@ export class KPVerdictEngine {
       timing: baseVerdict.timing,
       analysisSteps: baseVerdict.steps,
       confidence: baseVerdict.confidenceScore,
+      obstacles: baseVerdict.obstacles,
       requiredClarification: intent.requiresClarification
         ? {
             question: `Your query seems to relate to multiple domains. Which of these matched your intent?`,
@@ -338,4 +518,3 @@ export class KPVerdictEngine {
     };
   }
 }
-
