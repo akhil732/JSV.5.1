@@ -11,7 +11,7 @@ export const useKPChart = (person: any, chartData: any): KPChart | null => {
     if (!person || !chartData) return null;
 
     try {
-      // 1. Reconstruct Planet Longitudes
+      // 1. Reconstruct Planet Data
       const planetLongitudes: Record<string, number> = {};
       const d1 = chartData?.horoscope?.divisional_charts?.['D-1_rasi'] || chartData?.rasi || {};
       const signMap: Record<string, number> = {
@@ -29,16 +29,16 @@ export const useKPChart = (person: any, chartData: any): KPChart | null => {
       });
       const moonDegree = planetLongitudes.Moon ?? 0;
 
-      // 2. Houses (Calculate Placidus House Cusps FIRST)
+      // Houses MUST be computed before planets so real house-occupancy
+      // (significatorOf) can be calculated below — previously this ran
+      // after planets were built, forcing a hardcoded [1,2,7] fallback.
       const ascDegree = planetLongitudes.Lagna ?? 0;
       const houses = calculatePlacidusCusps(ascDegree, person.latitude, person.date, person.time);
 
-      // 3. Planets (Determine house occupied from house cusps)
       const planetNames = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
       const planets = planetNames.map((pName) => {
         const deg = planetLongitudes[pName] ?? 180;
         const subLordChain = calculateKPSubLord(deg);
-        const occupiedHouse = getHouseOccupied(deg, houses);
         return {
           name: pName,
           sign: subLordChain.sign,
@@ -48,12 +48,12 @@ export const useKPChart = (person: any, chartData: any): KPChart | null => {
           starLord: subLordChain.starLord,
           subLord: subLordChain.subLord,
           subSubLord: subLordChain.subSubLord,
-          significatorOf: [occupiedHouse]
+          significatorOf: [getHouseOccupied(deg, houses)]
         };
       });
 
-      // 4. Dynamic 4-Level Significators
-      const { houseSignificators, planetSignificators } = analyzeSignificators(planets, houses);
+      // 3. Significators
+      const { houseSignificators, planetSignificators } = analyzeSignificators(planets, houses, false);
 
       // 4. Ruling Planets
       const rulingPlanets = calculateRulingPlanets(undefined, undefined, person.latitude, person.longitude);

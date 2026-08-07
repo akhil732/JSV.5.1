@@ -5,7 +5,7 @@ import { KPVerdictEngine } from '../../lib/kp/kpVerdictEngine';
 import { BHAVAS_REFERENCE_TABLE } from '../../lib/kp/houseDomainMapper';
 import { useTheme } from '../../context/ThemeContext';
 import { ADAM_HOUSES_KP, calculatePlacidusCusps } from '../../lib/kp/placidusCalculator';
-import { calculateKPSubLord, formatDegrees, calculateApproximatePlanetaryLongitudes } from '../../lib/kp/subLordMapper';
+import { calculateKPSubLord, formatDegrees } from '../../lib/kp/subLordMapper';
 import { analyzeSignificators, getHouseOccupied } from '../../lib/kp/significatorAnalyzer';
 import { calculateRulingPlanets } from '../../lib/kp/rulingPlanetsCalculator';
 import { calculateVimshottariDashaFromMoon } from '../../lib/engines/DashaEngine';
@@ -157,6 +157,79 @@ function getVedicDomainMeta(domain?: string, targetHouse: number = 1) {
   }
 }
 
+// ─── Theme-aware color generator ─────────────────────────────────
+function getColors(isDark: boolean) {
+  if (isDark) {
+    return {
+      bg: '#0A0E17',
+      surface: '#10141F',
+      border: '#1E2433',
+      text: '#F5F5F7',
+      muted: '#9CA3AF',
+      body: '#D1D5DB',
+      accent: '#F5A623',
+      accentDark: '#D48806',
+      emeraldText: '#34d399',
+      emeraldBg: 'rgba(16,185,129,0.08)',
+      emeraldBorder: 'rgba(16,185,129,0.25)',
+      amberText: '#fbbf24',
+      amberBg: 'rgba(245,158,11,0.08)',
+      amberBorder: 'rgba(245,158,11,0.25)',
+      roseText: '#fb7185',
+      roseBg: 'rgba(239,68,68,0.08)',
+      roseBorder: 'rgba(239,68,68,0.25)',
+      skyText: '#38bdf8',
+      skyBg: 'rgba(56,189,248,0.08)',
+      skyBorder: 'rgba(56,189,248,0.2)',
+      headerBg: 'rgba(16,20,31,0.85)',
+      inputBg: 'rgba(16,20,31,0.92)',
+      userBubbleBg: 'rgba(245,166,35,0.1)',
+      userBubbleBorder: 'rgba(245,166,35,0.18)',
+      cardHeaderBg: 'rgba(10,14,23,0.45)',
+      cpBg: 'rgba(10,14,23,0.6)',
+      hurdlesNoteText: '#fde68a',
+      emptyIconBg: 'rgba(245,166,35,0.1)',
+      emptyIconBorder: 'rgba(245,166,35,0.18)',
+      btnHoverBorder: 'rgba(245,166,35,0.3)',
+      shadow: 'rgba(0,0,0,0.3)'
+    };
+  } else {
+    return {
+      bg: '#F8FAFC',
+      surface: '#FFFFFF',
+      border: '#E2E8F0',
+      text: '#0F172A',
+      muted: '#64748B',
+      body: '#334155',
+      accent: '#D97706',
+      accentDark: '#B45309',
+      emeraldText: '#059669',
+      emeraldBg: 'rgba(16,185,129,0.1)',
+      emeraldBorder: 'rgba(16,185,129,0.3)',
+      amberText: '#D97706',
+      amberBg: 'rgba(245,158,11,0.1)',
+      amberBorder: 'rgba(245,158,11,0.3)',
+      roseText: '#E11D48',
+      roseBg: 'rgba(225,29,72,0.08)',
+      roseBorder: 'rgba(225,29,72,0.25)',
+      skyText: '#0284C7',
+      skyBg: 'rgba(56,189,248,0.1)',
+      skyBorder: 'rgba(56,189,248,0.3)',
+      headerBg: 'rgba(255,255,255,0.9)',
+      inputBg: 'rgba(255,255,255,0.95)',
+      userBubbleBg: 'rgba(217,119,6,0.1)',
+      userBubbleBorder: 'rgba(217,119,6,0.22)',
+      cardHeaderBg: 'rgba(241,245,249,0.8)',
+      cpBg: 'rgba(248,250,252,0.95)',
+      hurdlesNoteText: '#92400E',
+      emptyIconBg: 'rgba(217,119,6,0.1)',
+      emptyIconBorder: 'rgba(217,119,6,0.22)',
+      btnHoverBorder: 'rgba(217,119,6,0.35)',
+      shadow: 'rgba(0,0,0,0.06)'
+    };
+  }
+}
+
 const ago = (ts: number) => {
   const d = Date.now() - ts;
   if (d < 60000) return 'just now';
@@ -194,139 +267,143 @@ function getChartSummaryText(chart?: KPChart): string {
 
 function EmptyState({
   onSelect,
+  C,
   activeDashaStr,
   chart
 }: {
   onSelect: (text: string) => void;
+  C: ReturnType<typeof getColors>;
   activeDashaStr: string;
   chart?: KPChart;
 }) {
   const summaryText = getChartSummaryText(chart);
   return (
-    <div className="flex flex-col items-center justify-center min-h-full p-8 text-center">
-      <div className="w-14 h-14 rounded-2xl bg-ds-primary/10 border border-ds-primary/20 flex items-center justify-center text-xl mb-4 text-ds-primary">
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100%', padding: '2rem 1.5rem', textAlign: 'center' }}>
+      <div style={{ width: 56, height: 56, borderRadius: 16, background: C.emptyIconBg, border: `1px solid ${C.emptyIconBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, marginBottom: 16, color: C.accent }}>
         ✦
       </div>
-      <h3 className="m-0 mb-2 text-lg font-bold text-ds-secondary">Ask about your life path</h3>
-      <p className="m-0 mb-6 text-xs sm:text-sm text-ds-on-surface-variant max-w-lg leading-relaxed">
+      <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: C.text }}>Ask about your life path</h3>
+      <p style={{ margin: '0 0 24px', fontSize: 13, color: C.muted, maxWidth: 520, lineHeight: 1.65 }}>
         {summaryText}
       </p>
-      <div className="grid grid-cols-3 gap-2 w-full max-w-sm">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, width: '100%', maxWidth: 380 }}>
         {QUERIES.map((q) => (
           <button
             key={q.label}
             onClick={() => onSelect(q.text)}
-            className="flex flex-col items-center gap-2 p-3.5 rounded-xl bg-ds-surface-container border border-ds-secondary/15 hover:border-ds-primary/40 transition-colors cursor-pointer"
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '14px 8px', borderRadius: 12, background: C.surface, border: `1px solid ${C.border}`, cursor: 'pointer', transition: 'border-color 0.15s, transform 0.1s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.btnHoverBorder; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border; }}
           >
-            <span className="text-xl">{q.icon}</span>
-            <span className="text-xs font-semibold text-ds-on-surface-variant">{q.label}</span>
+            <span style={{ fontSize: 20 }}>{q.icon}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: C.muted }}>{q.label}</span>
           </button>
         ))}
       </div>
-      <div className="mt-6 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-ds-surface-container border border-ds-secondary/15 text-xs text-ds-on-surface-variant">
-        <span className="w-1.5 h-1.5 rounded-full bg-ds-primary animate-pulse block" />
-        Active: <strong className="text-ds-secondary ml-1">{activeDashaStr}</strong>
+      <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 7, padding: '6px 14px', borderRadius: 99, background: C.surface, border: `1px solid ${C.border}`, fontSize: 11, color: C.muted }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.accent, display: 'block' }} className="animate-pulse" />
+        Active: <strong style={{ color: C.text, marginLeft: 4 }}>{activeDashaStr}</strong>
       </div>
     </div>
   );
 }
 
-function UserBubble({ text }: { text: string }) {
+function UserBubble({ text, C }: { text: string; C: ReturnType<typeof getColors> }) {
   return (
-    <div className="flex justify-end">
-      <div className="max-w-[75%] px-4 py-2.5 rounded-2xl rounded-br-xs bg-ds-primary/10 border border-ds-primary/20 text-xs sm:text-sm text-ds-secondary leading-relaxed">
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ maxWidth: '75%', padding: '10px 16px', borderRadius: 18, borderBottomRightRadius: 4, background: C.userBubbleBg, border: `1px solid ${C.userBubbleBorder}`, fontSize: 13, color: C.text, lineHeight: 1.6 }}>
         {text}
       </div>
     </div>
   );
 }
 
-function VerdictCard({ verdict }: { verdict: VerdictData }) {
+function VerdictCard({ verdict, C }: { verdict: VerdictData; C: ReturnType<typeof getColors> }) {
   const [expanded, setExpanded] = useState(false);
 
   const STATUS_CONFIG = {
-    YES: { label: 'Favorable · Promised', icon: '✓', text: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', dot: 'bg-emerald-500' },
-    DELAYED: { label: 'Delayed · Patience Required', icon: '◷', text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', dot: 'bg-amber-500' },
-    NO: { label: 'Requires Caution', icon: '⚠', text: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/30', dot: 'bg-rose-500' },
+    YES: { label: 'Favorable · Promised', icon: '✓', text: C.emeraldText, bg: C.emeraldBg, border: C.emeraldBorder, dot: C.emeraldText },
+    DELAYED: { label: 'Delayed · Patience Required', icon: '◷', text: C.amberText, bg: C.amberBg, border: C.amberBorder, dot: C.amberText },
+    NO: { label: 'Requires Caution', icon: '⚠', text: C.roseText, bg: C.roseBg, border: C.roseBorder, dot: C.roseText },
   };
 
   const CP_CONFIG: Record<string, { text: string; bg: string; border: string }> = {
-    Passed: { text: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
-    Favorable: { text: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
-    Confirmed: { text: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/30' },
-    'Requires Caution': { text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30' },
-    'Awaiting Movement': { text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30' },
+    Passed: { text: C.emeraldText, bg: C.emeraldBg, border: C.emeraldBorder },
+    Favorable: { text: C.emeraldText, bg: C.emeraldBg, border: C.emeraldBorder },
+    Confirmed: { text: C.skyText, bg: C.skyBg, border: C.skyBorder },
+    'Requires Caution': { text: C.amberText, bg: C.amberBg, border: C.amberBorder },
+    'Awaiting Movement': { text: C.amberText, bg: C.amberBg, border: C.amberBorder },
   };
 
   const st = STATUS_CONFIG[verdict.status] || STATUS_CONFIG.NO;
 
   return (
-    <div className="bg-ds-surface border border-ds-secondary/15 rounded-2xl overflow-hidden shadow-ds-sm">
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: `0 4px 12px ${C.shadow}` }}>
       {/* Header bar — house + status */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-ds-secondary/15 bg-ds-surface-container">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-ds-on-surface-variant uppercase tracking-wider">KP Analysis</span>
-          <span className="w-1 h-1 rounded-full bg-ds-secondary/20 block" />
-          <span className="text-[10px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-500/10 border border-sky-500/30 px-2 py-0.5 rounded">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 16px', borderBottom: `1px solid ${C.border}`, background: C.cardHeaderBg }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>KP Analysis</span>
+          <span style={{ width: 3, height: 3, borderRadius: '50%', background: C.border, display: 'block' }} />
+          <span style={{ fontSize: 10, fontWeight: 600, color: C.skyText, background: C.skyBg, border: `1px solid ${C.skyBorder}`, padding: '2px 8px', borderRadius: 4 }}>
             H{verdict.primaryHouse} · {verdict.houseSanskritName}
           </span>
         </div>
-        <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border flex items-center gap-1 ${st.text} ${st.bg} ${st.border}`}>
+        <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '2px 8px', borderRadius: 4, color: st.text, background: st.bg, border: `1px solid ${st.border}`, display: 'flex', alignItems: 'center', gap: 4 }}>
           <span>{st.icon}</span> {verdict.status}
         </span>
       </div>
 
-      <div className="p-4 flex flex-col gap-3">
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {/* Status banner — confidence indicator */}
-        <div className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border ${st.bg} ${st.border}`}>
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${st.dot}`} />
-            <span className={`text-xs sm:text-sm font-bold ${st.text}`}>{st.label}</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 12, background: st.bg, border: `1px solid ${st.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: st.dot, flexShrink: 0 }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: st.text }}>{st.label}</span>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <div className="w-15 h-1 bg-ds-surface rounded-full overflow-hidden">
-              <div className="h-full bg-ds-primary rounded-full" style={{ width: `${verdict.confidence}%` }} />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+            <div style={{ width: 60, height: 4, background: C.bg, borderRadius: 99, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${verdict.confidence}%`, background: C.accent, borderRadius: 99 }} />
             </div>
-            <span className="text-[10px] font-bold text-ds-secondary">{verdict.confidence}%</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: C.text }}>{verdict.confidence}%</span>
           </div>
         </div>
 
         {/* Summary — the hero content */}
-        <p className="text-xs sm:text-sm text-ds-on-surface-variant leading-relaxed m-0">
+        <p style={{ fontSize: 13, color: C.body, lineHeight: 1.75, margin: 0 }}>
           {verdict.summary}
         </p>
 
         {/* Timing + Dasha grid */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-ds-surface-container border border-ds-secondary/15 rounded-xl p-3">
-            <span className="text-[9px] font-bold text-ds-primary uppercase tracking-wider block mb-1">Favorable Window</span>
-            <p className="text-xs font-bold text-ds-secondary m-0 leading-tight">{verdict.timing}</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: C.accent, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 5 }}>Favorable Window</span>
+            <p style={{ fontSize: 12, fontWeight: 700, color: C.text, margin: 0, lineHeight: 1.4 }}>{verdict.timing}</p>
           </div>
-          <div className="bg-ds-surface-container border border-ds-secondary/15 rounded-xl p-3">
-            <span className="text-[9px] font-bold text-ds-primary uppercase tracking-wider block mb-1">Active Dasha</span>
-            <p className="text-xs font-bold text-ds-secondary m-0 leading-tight">{verdict.mahadasha} MD</p>
-            <p className="text-[10px] text-ds-on-surface-variant m-0 mt-0.5">{verdict.antardasha} Antardasha</p>
+          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: C.accent, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 5 }}>Active Dasha</span>
+            <p style={{ fontSize: 12, fontWeight: 700, color: C.text, margin: '0 0 2px' }}>{verdict.mahadasha} MD</p>
+            <p style={{ fontSize: 10, color: C.muted, margin: 0 }}>{verdict.antardasha} Antardasha</p>
           </div>
         </div>
 
         {/* Technical chips — house lord, karakas, supporting */}
-        <div className="flex flex-wrap gap-1.5">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {[
             { label: 'Lord', value: verdict.houseLord },
             { label: 'Karakas', value: verdict.naturalKarakas },
             { label: 'Support', value: verdict.supportingHouses },
           ].map(({ label, value }) => (
-            <span key={label} className="text-[10px] px-2.5 py-1 rounded-lg bg-ds-surface-container border border-ds-secondary/15 text-ds-on-surface-variant">
-              <span className="text-ds-primary font-semibold">{label}: </span>{value}
+            <span key={label} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 8, background: C.bg, border: `1px solid ${C.border}`, color: C.muted, lineHeight: 1 }}>
+              <span style={{ color: C.accent, fontWeight: 600 }}>{label}: </span>{value}
             </span>
           ))}
         </div>
 
         {/* Planetary hurdles warning */}
         {verdict.hasHurdles && verdict.hurdlesNote && (
-          <div className="flex gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs">
-            <span className="text-amber-600 dark:text-amber-400 flex-shrink-0 text-sm">⚠</span>
-            <p className="text-[11px] text-amber-700 dark:text-amber-200 leading-relaxed m-0">{verdict.hurdlesNote}</p>
+          <div style={{ display: 'flex', gap: 8, padding: '10px 12px', borderRadius: 12, background: C.amberBg, border: `1px solid ${C.amberBorder}` }}>
+            <span style={{ color: C.amberText, flexShrink: 0, fontSize: 14, lineHeight: 1.4 }}>⚠</span>
+            <p style={{ fontSize: 11, color: C.hurdlesNoteText, lineHeight: 1.6, margin: 0 }}>{verdict.hurdlesNote}</p>
           </div>
         )}
 
@@ -335,29 +412,31 @@ function VerdictCard({ verdict }: { verdict: VerdictData }) {
           <>
             <button
               onClick={() => setExpanded((e) => !e)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-ds-on-surface-variant hover:text-ds-primary pt-2 border-t border-ds-secondary/15 cursor-pointer w-full text-left transition-colors"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: C.muted, background: 'none', border: 'none', borderTop: `1px solid ${C.border}`, paddingTop: 10, cursor: 'pointer', width: '100%', textAlign: 'left', transition: 'color 0.1s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = C.accent; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = C.muted; }}
             >
-              <span className={`inline-block transition-transform ${expanded ? 'rotate-90' : 'rotate-0'}`}>▸</span>
+              <span style={{ display: 'inline-block', transform: expanded ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.15s' }}>▸</span>
               {expanded ? 'Hide' : 'Show'} Vedic reasoning ({verdict.checkpoints.length} checkpoints)
             </button>
 
             {expanded && (
-              <div className="flex flex-col gap-1.5">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {verdict.checkpoints.map((cp) => {
                   const cs = CP_CONFIG[cp.status] || CP_CONFIG['Requires Caution'];
                   return (
-                    <div key={cp.step} className="flex items-start gap-2.5 bg-ds-surface-container border border-ds-secondary/15 rounded-xl p-3">
-                      <span className="w-5 h-5 rounded-full bg-ds-primary/20 text-ds-primary text-[9px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <div key={cp.step} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: C.cpBg, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+                      <span style={{ width: 20, height: 20, borderRadius: '50%', background: C.userBubbleBg, color: C.accent, fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
                         {cp.step}
                       </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <span className="text-xs font-semibold text-ds-secondary">{cp.title}</span>
-                          <span className={`text-[8px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded border ${cs.text} ${cs.bg} ${cs.border}`}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: C.text }}>{cp.title}</span>
+                          <span style={{ fontSize: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 6px', borderRadius: 4, border: `1px solid ${cs.border}`, color: cs.text, background: cs.bg, flexShrink: 0 }}>
                             {cp.status}
                           </span>
                         </div>
-                        <p className="text-[10px] text-ds-on-surface-variant leading-relaxed m-0">{cp.note}</p>
+                        <p style={{ fontSize: 10, color: C.muted, lineHeight: 1.55, margin: 0 }}>{cp.note}</p>
                       </div>
                     </div>
                   );
@@ -371,12 +450,12 @@ function VerdictCard({ verdict }: { verdict: VerdictData }) {
   );
 }
 
-function AssistantBubble({ msg }: { msg: ChatMessage }) {
+function AssistantBubble({ msg, C }: { msg: ChatMessage; C: ReturnType<typeof getColors> }) {
   if (msg.error) {
     return (
-      <div className="flex gap-2.5">
-        <div className="w-7 h-7 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center flex-shrink-0 mt-0.5 text-xs text-rose-500">✦</div>
-        <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-2xl rounded-tl-xs text-xs text-rose-600 dark:text-rose-400 leading-relaxed">
+      <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ width: 28, height: 28, borderRadius: '50%', background: C.roseBg, border: `1px solid ${C.roseBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2, fontSize: 13, color: C.roseText }}>✦</div>
+        <div style={{ padding: '10px 14px', background: C.roseBg, border: `1px solid ${C.roseBorder}`, borderRadius: 16, borderTopLeftRadius: 4, fontSize: 12, color: C.roseText, lineHeight: 1.6 }}>
           {msg.error}
         </div>
       </div>
@@ -384,24 +463,24 @@ function AssistantBubble({ msg }: { msg: ChatMessage }) {
   }
 
   return (
-    <div className="flex gap-2.5 w-full">
-      <div className="w-7 h-7 rounded-full bg-ds-primary/10 border border-ds-primary/20 flex items-center justify-center flex-shrink-0 mt-1 text-xs text-ds-primary">✦</div>
-      <div className="flex-1 min-w-0">
-        {msg.verdict && <VerdictCard verdict={msg.verdict} />}
+    <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+      <div style={{ width: 28, height: 28, borderRadius: '50%', background: C.emptyIconBg, border: `1px solid ${C.emptyIconBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 4, fontSize: 13, color: C.accent }}>✦</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {msg.verdict && <VerdictCard verdict={msg.verdict} C={C} />}
       </div>
     </div>
   );
 }
 
-function LoadingBubble() {
+function LoadingBubble({ C }: { C: ReturnType<typeof getColors> }) {
   return (
-    <div className="flex gap-2.5">
-      <div className="w-7 h-7 rounded-full bg-ds-primary/10 border border-ds-primary/20 flex items-center justify-center flex-shrink-0 text-xs text-ds-primary animate-pulse">✦</div>
-      <div className="px-4 py-3 bg-ds-surface border border-ds-secondary/15 rounded-2xl rounded-tl-xs flex items-center gap-3">
-        <span className="text-xs text-ds-on-surface-variant font-mono">Analyzing your chart</span>
-        <span className="flex gap-1">
+    <div style={{ display: 'flex', gap: 10 }}>
+      <div style={{ width: 28, height: 28, borderRadius: '50%', background: C.emptyIconBg, border: `1px solid ${C.emptyIconBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, color: C.accent }} className="animate-pulse">✦</div>
+      <div style={{ padding: '12px 16px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, borderTopLeftRadius: 4, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 12, color: C.muted, fontFamily: 'monospace' }}>Analyzing your chart</span>
+        <span style={{ display: 'flex', gap: 3 }}>
           {[0, 1, 2].map((i) => (
-            <span key={i} className="w-1.5 h-1.5 rounded-full bg-ds-primary animate-bounce" style={{ animationDelay: `${-0.3 + i * 0.15}s` }} />
+            <span key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: C.accent, animationDelay: `${-0.3 + i * 0.15}s` }} className="animate-bounce" />
           ))}
         </span>
       </div>
@@ -409,45 +488,47 @@ function LoadingBubble() {
   );
 }
 
-function HistoryPanel({ isOpen, history, onClose, onSelect, onClear }: { isOpen: boolean; history: HistoryItem[]; onClose: () => void; onSelect: (text: string) => void; onClear: () => void }) {
+function HistoryPanel({ isOpen, history, onClose, onSelect, onClear, C }: { isOpen: boolean; history: HistoryItem[]; onClose: () => void; onSelect: (text: string) => void; onClear: () => void; C: ReturnType<typeof getColors> }) {
   if (!isOpen) return null;
   return (
-    <div className="absolute inset-0 z-50 flex">
-      <div className="w-70 bg-ds-surface border-r border-ds-secondary/15 flex flex-col h-full shadow-ds-lg">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-ds-secondary/15 flex-shrink-0">
-          <span className="text-xs font-bold text-ds-primary uppercase tracking-wider">Query History</span>
-          <button onClick={onClose} className="text-ds-on-surface-variant hover:text-ds-secondary text-lg cursor-pointer px-1">×</button>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex' }}>
+      <div style={{ width: 280, background: C.surface, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', height: '100%', boxShadow: `4px 0 16px ${C.shadow}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Query History</span>
+          <button onClick={onClose} style={{ color: C.muted, background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}>×</button>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
+        <div style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {history.length === 0 ? (
-            <p className="text-xs text-ds-on-surface-variant text-center py-8">No queries yet</p>
+            <p style={{ fontSize: 12, color: C.muted, textAlign: 'center', padding: '32px 0' }}>No queries yet</p>
           ) : (
             history.map((item) => (
               <button
                 key={item.id}
                 onClick={() => { onSelect(item.text); onClose(); }}
-                className="w-full text-left p-2.5 rounded-xl bg-transparent hover:bg-ds-surface-container border border-transparent hover:border-ds-secondary/15 cursor-pointer transition-colors"
+                style={{ width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: 10, background: 'none', border: '1px solid transparent', cursor: 'pointer', transition: 'all 0.1s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.borderColor = 'transparent'; }}
               >
-                <p className="text-xs text-ds-secondary leading-normal m-0 mb-1 line-clamp-2">{item.text}</p>
-                <span className="text-[10px] text-ds-on-surface-variant">{ago(item.ts)}</span>
+                <p style={{ fontSize: 12, color: C.body, lineHeight: 1.5, margin: '0 0 3px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.text}</p>
+                <span style={{ fontSize: 10, color: C.muted }}>{ago(item.ts)}</span>
               </button>
             ))
           )}
         </div>
         {history.length > 0 && (
-          <div className="p-3 border-t border-ds-secondary/15 flex-shrink-0">
-            <button onClick={onClear} className="w-full text-xs text-rose-600 dark:text-rose-400 hover:underline cursor-pointer py-1 font-semibold">
+          <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+            <button onClick={onClear} style={{ width: '100%', fontSize: 11, color: C.roseText, background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0', fontWeight: 600 }}>
               Clear history
             </button>
           </div>
         )}
       </div>
-      <div className="flex-1 bg-black/40" onClick={onClose} />
+      <div style={{ flex: 1, background: 'rgba(0,0,0,0.4)' }} onClick={onClose} />
     </div>
   );
 }
 
-function InputBar({ value, onChange, onSend, isLoading, isEmpty, onSelectSuggestion, inputRef }: { value: string; onChange: (v: string) => void; onSend: () => void; isLoading: boolean; isEmpty: boolean; onSelectSuggestion: (t: string) => void; inputRef: React.RefObject<HTMLInputElement> }) {
+function InputBar({ value, onChange, onSend, isLoading, isEmpty, onSelectSuggestion, inputRef, C }: { value: string; onChange: (v: string) => void; onSend: () => void; isLoading: boolean; isEmpty: boolean; onSelectSuggestion: (t: string) => void; inputRef: React.RefObject<HTMLInputElement>; C: ReturnType<typeof getColors> }) {
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -456,21 +537,23 @@ function InputBar({ value, onChange, onSend, isLoading, isEmpty, onSelectSuggest
   };
 
   return (
-    <div className="flex-shrink-0 border-t border-ds-secondary/15 bg-ds-surface/90 backdrop-blur-md">
+    <div style={{ flexShrink: 0, borderTop: `1px solid ${C.border}`, background: C.inputBg, backdropFilter: 'blur(8px)' }}>
       {isEmpty && (
-        <div className="px-4 pt-3 pb-1 flex flex-wrap gap-1.5">
+        <div style={{ padding: '12px 16px 4px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {QUERIES.map((q) => (
             <button
               key={q.label}
               onClick={() => onSelectSuggestion(q.text)}
-              className="text-[10px] font-semibold text-ds-on-surface-variant px-2.5 py-1 rounded-lg bg-ds-surface-container border border-ds-secondary/15 hover:border-ds-primary/40 hover:text-ds-secondary transition-colors cursor-pointer"
+              style={{ fontSize: 10, fontWeight: 600, color: C.muted, padding: '4px 10px', borderRadius: 8, background: C.bg, border: `1px solid ${C.border}`, cursor: 'pointer', transition: 'all 0.1s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.btnHoverBorder; e.currentTarget.style.color = C.text; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}
             >
               {q.icon} {q.label}
             </button>
           ))}
         </div>
       )}
-      <div className="flex items-center gap-2.5 p-3.5 px-4">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px' }}>
         <input
           ref={inputRef}
           type="text"
@@ -479,15 +562,17 @@ function InputBar({ value, onChange, onSend, isLoading, isEmpty, onSelectSuggest
           onKeyDown={handleKey}
           disabled={isLoading}
           placeholder="Ask about career, marriage, property, health…"
-          className="flex-1 bg-ds-surface-container border border-ds-secondary/15 focus:border-ds-primary rounded-xl px-4 py-2.5 text-xs sm:text-sm text-ds-secondary outline-none transition-colors disabled:opacity-50"
+          style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: '10px 16px', fontSize: 13, color: C.text, outline: 'none', transition: 'border-color 0.15s', opacity: isLoading ? 0.55 : 1 }}
+          onFocus={(e) => { e.target.style.borderColor = C.accent; }}
+          onBlur={(e) => { e.target.style.borderColor = C.border; }}
         />
         <button
           onClick={onSend}
           disabled={isLoading || !value.trim()}
-          className="w-10 h-10 rounded-xl flex-shrink-0 bg-ds-primary text-ds-on-primary font-bold flex items-center justify-center text-base disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed transition-colors"
+          style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, background: (!isLoading && value.trim()) ? C.accent : C.border, border: 'none', cursor: (!isLoading && value.trim()) ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, color: (!isLoading && value.trim()) ? '#FFFFFF' : C.muted, fontWeight: 900, transition: 'background 0.15s' }}
         >
           {isLoading ? (
-            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            <span style={{ width: 16, height: 16, border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%' }} className="animate-spin" />
           ) : (
             '↑'
           )}
@@ -500,17 +585,11 @@ function InputBar({ value, onChange, onSend, isLoading, isEmpty, onSelectSuggest
 function buildFallbackKPChart(birthDetails?: BirthDetails, horoscopeData?: any): KPChart {
   const isAdam = !birthDetails || birthDetails.date === '1996-11-11' || (birthDetails.name && (birthDetails.name.toLowerCase().includes('akhil') || birthDetails.name.toLowerCase().includes('adam')));
 
-  const dateStr = birthDetails?.date || '1996-11-11';
-  const timeStr = birthDetails?.time || '13:50:00';
-  const lat = birthDetails?.latitude || 17.17;
-
-  let planetLongitudes: Record<string, number> = calculateApproximatePlanetaryLongitudes(dateStr, timeStr);
-  if (isAdam) {
-    planetLongitudes = {
-      Sun: 205.2, Moon: 202.1, Mars: 135.5, Mercury: 220.4,
-      Jupiter: 258.8, Venus: 168.3, Saturn: 338.2, Rahu: 172.6, Ketu: 352.6, Lagna: 311.4
-    };
-  }
+  let moonDegree = 202.1;
+  let planetLongitudes: Record<string, number> = {
+    Sun: 205.2, Moon: 202.1, Mars: 135.5, Mercury: 220.4,
+    Jupiter: 258.8, Venus: 168.3, Saturn: 338.2, Rahu: 172.6, Ketu: 352.6, Lagna: 311.4
+  };
 
   const d1 = horoscopeData?.horoscope?.divisional_charts?.['D-1_rasi'];
   if (d1 && !isAdam) {
@@ -527,20 +606,24 @@ function buildFallbackKPChart(birthDetails?: BirthDetails, horoscopeData?: any):
         planetLongitudes[stdKey] = absDeg;
       }
     });
+    if (typeof planetLongitudes.Moon === 'number') {
+      moonDegree = planetLongitudes.Moon;
+    }
   }
 
-  const moonDegree = planetLongitudes.Moon ?? 202.1;
-
-  // 1. Calculate Placidus House Cusps FIRST
+  // Houses computed FIRST so planets below can use real cusp boundaries for
+  // house occupancy — previously houses were computed after planets, which
+  // forced a hardcoded [1,2,7] fallback on every planet.
   const ascDegree = planetLongitudes.Lagna ?? 311.4;
-  const houses = (isAdam && dateStr === '1996-11-11') ? ADAM_HOUSES_KP : calculatePlacidusCusps(ascDegree, lat, dateStr, timeStr);
+  const lat = birthDetails?.latitude || 17.17;
+  const dateStr = birthDetails?.date || '1996-11-11';
+  const timeStr = birthDetails?.time || '13:50:00';
+  const houses = isAdam ? ADAM_HOUSES_KP : calculatePlacidusCusps(ascDegree, lat, dateStr, timeStr);
 
-  // 2. Calculate Planets with actual occupied house
   const planetNames = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
   const planets: KPPlanet[] = planetNames.map((pName) => {
     const deg = planetLongitudes[pName] ?? 180;
     const subLordChain = calculateKPSubLord(deg);
-    const occupiedHouse = getHouseOccupied(deg, houses);
     return {
       name: pName,
       sign: subLordChain.sign,
@@ -552,11 +635,11 @@ function buildFallbackKPChart(birthDetails?: BirthDetails, horoscopeData?: any):
       subSubLord: subLordChain.subSubLord,
       isRetrograde: pName === 'Rahu' || pName === 'Ketu' || (isAdam && pName === 'Saturn'),
       isCombust: isAdam && (pName === 'Sun' || pName === 'Moon' || pName === 'Mercury'),
-      significatorOf: [occupiedHouse]
+      significatorOf: isAdam ? [1, 2, 7] : [getHouseOccupied(deg, houses)]
     };
   });
 
-  const { houseSignificators, planetSignificators } = analyzeSignificators(planets, houses);
+  const { houseSignificators, planetSignificators } = analyzeSignificators(planets, houses, isAdam);
   const rulingPlanets = calculateRulingPlanets(undefined, undefined, lat, birthDetails?.longitude || 82.0611);
   const birthDateTimeStr = `${dateStr} ${timeStr}`;
   const calculatedDasha = calculateVimshottariDashaFromMoon(moonDegree, birthDateTimeStr, new Date(), horoscopeData);
@@ -588,6 +671,9 @@ function buildFallbackKPChart(birthDetails?: BirthDetails, horoscopeData?: any):
 
 // ─── Main KP Query Chat Component ─────────────────────────────────
 export const KPQueryView: React.FC<KPQueryViewProps> = ({ chart: propsChart, birthDetails, horoscopeData, hideHeader = false }) => {
+  const { isDark } = useTheme();
+  const C = getColors(isDark);
+
   const chart = useMemo(() => propsChart || buildFallbackKPChart(birthDetails, horoscopeData), [propsChart, birthDetails, horoscopeData]);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -728,60 +814,65 @@ export const KPQueryView: React.FC<KPQueryViewProps> = ({ chart: propsChart, bir
   const nativeDate = chart.birthData?.date || '';
 
   return (
-    <div className={`relative flex flex-col ${hideHeader ? 'h-full' : 'h-[680px]'} bg-ds-surface text-ds-secondary overflow-hidden font-sans ${hideHeader ? '' : 'rounded-2xl border border-ds-secondary/15 shadow-ds-sm'}`}>
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: hideHeader ? '100%' : 680, background: C.bg, color: C.text, overflow: 'hidden', fontFamily: 'system-ui, -apple-system, sans-serif', borderRadius: hideHeader ? 0 : 16, border: hideHeader ? 'none' : `1px solid ${C.border}`, boxShadow: hideHeader ? 'none' : `0 8px 24px ${C.shadow}` }}>
       <HistoryPanel
         isOpen={historyOpen}
         history={history}
         onClose={() => setHistoryOpen(false)}
         onSelect={send}
         onClear={() => setHistory([])}
+        C={C}
       />
 
       {/* Header */}
       {!hideHeader && (
-        <header className="flex items-center justify-between px-4 py-3 border-b border-ds-secondary/15 bg-ds-surface-container/80 backdrop-blur-md flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-ds-primary/10 border border-ds-primary/20 flex items-center justify-center text-xs text-ds-primary">✦</div>
+        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${C.border}`, background: C.headerBg, backdropFilter: 'blur(8px)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: C.emptyIconBg, border: `1px solid ${C.emptyIconBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: C.accent }}>✦</div>
             <div>
-              <p className="m-0 text-xs sm:text-sm font-bold text-ds-secondary leading-tight">KP Query Engine</p>
-              <p className="m-0 text-[10px] text-ds-on-surface-variant leading-tight">
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>KP Query Engine</p>
+              <p style={{ margin: 0, fontSize: 10, color: C.muted, lineHeight: 1.3 }}>
                 Krishnamurti Paddhati · {nativeName} {nativeDate ? `· ${nativeDate}` : ''}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {messages.length > 0 && (
               <button
                 onClick={() => setMessages([])}
-                className="text-[10px] font-bold text-ds-on-surface-variant hover:text-ds-secondary px-2.5 py-1 rounded-lg bg-transparent border border-ds-secondary/15 hover:border-ds-primary/40 cursor-pointer transition-colors"
+                style={{ fontSize: 10, fontWeight: 700, color: C.muted, padding: '4px 10px', borderRadius: 8, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', transition: 'all 0.1s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.btnHoverBorder; e.currentTarget.style.color = C.text; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}
               >
                 New Chat
               </button>
             )}
             <button
               onClick={() => setHistoryOpen(true)}
-              className="text-[10px] font-bold text-ds-on-surface-variant hover:text-ds-secondary px-2.5 py-1 rounded-lg bg-transparent border border-ds-secondary/15 hover:border-ds-primary/40 cursor-pointer flex items-center gap-1 transition-colors"
+              style={{ fontSize: 10, fontWeight: 700, color: C.muted, padding: '4px 10px', borderRadius: 8, background: 'none', border: `1px solid ${C.border}`, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, transition: 'all 0.1s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.btnHoverBorder; e.currentTarget.style.color = C.text; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}
             >
-              ⏱ History {history.length > 0 && <span className="text-ds-primary">({history.length})</span>}
+              ⏱ History {history.length > 0 && <span style={{ color: C.accent }}>({history.length})</span>}
             </button>
           </div>
         </header>
       )}
 
       {/* Chat Canvas */}
-      <main className="flex-1 overflow-y-auto">
+      <main style={{ flex: 1, overflowY: 'auto' }}>
         {messages.length === 0 ? (
-          <EmptyState onSelect={send} activeDashaStr={activeDashaStr} chart={chart} />
+          <EmptyState onSelect={send} C={C} activeDashaStr={activeDashaStr} chart={chart} />
         ) : (
-          <div className="max-w-2xl mx-auto p-4 sm:p-6 flex flex-col gap-5">
+          <div style={{ maxWidth: 680, margin: '0 auto', padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
             {messages.map((msg) =>
               msg.role === 'user' ? (
-                <UserBubble key={msg.id} text={msg.content || ''} />
+                <UserBubble key={msg.id} text={msg.content || ''} C={C} />
               ) : (
-                <AssistantBubble key={msg.id} msg={msg} />
+                <AssistantBubble key={msg.id} msg={msg} C={C} />
               )
             )}
-            {loading && <LoadingBubble />}
+            {loading && <LoadingBubble C={C} />}
             <div ref={scrollRef} />
           </div>
         )}
@@ -796,6 +887,7 @@ export const KPQueryView: React.FC<KPQueryViewProps> = ({ chart: propsChart, bir
         isLoading={loading}
         isEmpty={messages.length === 0}
         onSelectSuggestion={send}
+        C={C}
       />
     </div>
   );

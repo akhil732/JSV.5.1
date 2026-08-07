@@ -3,7 +3,7 @@ import { KPChart, KPPlanet } from '../../types/kp';
 import { SavedPerson } from '../../types/marriageMatch';
 import { BirthDetails } from '../../types';
 import { ProfileStorageService } from '../../lib/profileStorageService';
-import { ADAM_PLANETS_KP as ADAM_PLANETS, calculateKPSubLord, formatDegrees, calculateApproximatePlanetaryLongitudes } from '../../lib/kp/subLordMapper';
+import { ADAM_PLANETS_KP as ADAM_PLANETS, calculateKPSubLord, formatDegrees } from '../../lib/kp/subLordMapper';
 import { ADAM_HOUSES_KP, calculatePlacidusCusps } from '../../lib/kp/placidusCalculator';
 import { analyzeSignificators, getHouseOccupied } from '../../lib/kp/significatorAnalyzer';
 import { calculateRulingPlanets } from '../../lib/kp/rulingPlanetsCalculator';
@@ -11,6 +11,11 @@ import { calculateVimshottariDashaFromMoon, CalculatedDashaInfo } from '../../li
 import { CuspTable } from './CuspTable';
 import { PlanetSignificatorsTable } from './PlanetSignificatorsTable';
 import { RulingPlanetsWidget } from './RulingPlanetsWidget';
+import { QueryVerdictPanel } from './QueryVerdictPanel';
+import { DomainPredictionsView } from './DomainPredictionsView';
+import { VimshottariDashaTab } from './VimshottariDashaTab';
+import { KPQueryView } from './KPQueryView';
+import { RVATripleCharts } from './RVATripleCharts';
 import { BirthForm } from '../BirthForm';
 import { User, Sparkles, Compass, BarChart3, ShieldAlert, Clock, PlusCircle, UserCheck, Layers } from 'lucide-react';
 
@@ -33,12 +38,16 @@ interface KPAnalysisPageProps {
   birthDetails?: BirthDetails;
   horoscopeData?: any;
   hideProfileSelector?: boolean;
+  initialTab?: 'charts' | 'predictions' | 'dasha' | 'chart' | 'ruling' | 'analysis' | 'query';
+  hideSubTabs?: boolean;
 }
 
 export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
   birthDetails,
   horoscopeData,
   hideProfileSelector = false,
+  initialTab = 'charts',
+  hideSubTabs = false
 }) => {
   // ... existing state ...
   const [profiles, setProfiles] = useState<SavedPerson[]>([]);
@@ -58,7 +67,13 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
     }
     return AKHIL_DEFAULT_PROFILE;
   });
+  const [activeTab, setActiveTab] = useState<'charts' | 'predictions' | 'dasha' | 'chart' | 'ruling' | 'analysis' | 'query'>(initialTab);
 
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [kpChart, setKpChart] = useState<KPChart | null>(null);
   const [dashaInfo, setDashaInfo] = useState<CalculatedDashaInfo | null>(null);
   const [showBirthForm, setShowBirthForm] = useState(false);
@@ -80,16 +95,7 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
       };
       setSelectedProfile(p);
     }
-  }, [
-    birthDetails?.name,
-    birthDetails?.date,
-    birthDetails?.time,
-    birthDetails?.place,
-    birthDetails?.latitude,
-    birthDetails?.longitude,
-    birthDetails?.timezone,
-    birthDetails?.gender
-  ]);
+  }, [birthDetails?.name, birthDetails?.date, birthDetails?.time, birthDetails?.place]);
 
   useEffect(() => {
     // Subscribe to saved profiles from storage service
@@ -106,21 +112,19 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
     try {
       const isAdam = profile.id === 'satyam-family-10' || (profile.date === '1996-11-11' && (profile.name.toLowerCase().includes('akhil') || profile.name.toLowerCase().includes('adam')));
 
-      let planetLongitudes: Record<string, number> = calculateApproximatePlanetaryLongitudes(profile.date, profile.time);
-      if (isAdam) {
-        planetLongitudes = {
-          Sun: 205.2,
-          Moon: 202.1,
-          Mars: 135.5,
-          Mercury: 220.4,
-          Jupiter: 258.8,
-          Venus: 168.3,
-          Saturn: 338.2,
-          Rahu: 172.6,
-          Ketu: 352.6,
-          Lagna: 311.4
-        };
-      }
+      let moonDegree = 202.1; // Default Moon degree for Adam
+      let planetLongitudes: Record<string, number> = {
+        Sun: 205.2,
+        Moon: 202.1,
+        Mars: 135.5,
+        Mercury: 220.4,
+        Jupiter: 258.8,
+        Venus: 168.3,
+        Saturn: 338.2,
+        Rahu: 172.6,
+        Ketu: 352.6,
+        Lagna: 311.4
+      };
 
       // Try reading directly from horoscopeData if available
       const d1 = horoscopeData?.horoscope?.divisional_charts?.['D-1_rasi'];
@@ -139,6 +143,10 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
             planetLongitudes[stdKey] = absDeg;
           }
         });
+
+        if (typeof planetLongitudes.Moon === 'number') {
+          moonDegree = planetLongitudes.Moon;
+        }
       } else if (!isAdam) {
         // Fetch accurate astronomical positions from backend API if not test case
         try {
@@ -173,6 +181,10 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
                   planetLongitudes[stdKey] = absDeg;
                 }
               });
+
+              if (typeof planetLongitudes.Moon === 'number') {
+                moonDegree = planetLongitudes.Moon;
+              }
             }
           }
         } catch (err) {
@@ -180,18 +192,17 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
         }
       }
 
-      const moonDegree = planetLongitudes.Moon ?? 202.1;
-
-      // 1. Calculate Placidus House Cusps FIRST
+      // 1. Calculate Placidus House Cusps FIRST (planets need real cusp
+      //    boundaries below to compute genuine house occupancy — this used
+      //    to run after planet construction, forcing a hardcoded [1,2,7]).
       const ascDegree = planetLongitudes.Lagna ?? 311.4;
-      const houses = (isAdam && profile.date === '1996-11-11') ? ADAM_HOUSES_KP : calculatePlacidusCusps(ascDegree, profile.latitude, profile.date, profile.time);
+      const houses = isAdam ? ADAM_HOUSES_KP : calculatePlacidusCusps(ascDegree, profile.latitude, profile.date, profile.time);
 
-      // 2. Calculate Planet Sub Lords & Occupied Houses
+      // 2. Calculate Planet Sub Lords + real house occupancy
       const planetNames = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
       const planets: KPPlanet[] = planetNames.map((pName) => {
         const deg = planetLongitudes[pName] ?? 180;
         const subLordChain = calculateKPSubLord(deg);
-        const occupiedHouse = getHouseOccupied(deg, houses);
         return {
           name: pName,
           sign: subLordChain.sign,
@@ -203,12 +214,12 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
           subSubLord: subLordChain.subSubLord,
           isRetrograde: pName === 'Rahu' || pName === 'Ketu' || (isAdam && pName === 'Saturn'),
           isCombust: isAdam && (pName === 'Sun' || pName === 'Moon' || pName === 'Mercury'),
-          significatorOf: [occupiedHouse]
+          significatorOf: isAdam ? [1, 2, 7] : [getHouseOccupied(deg, houses)]
         };
       });
 
-      // 3. Analyze Significators dynamically
-      const { houseSignificators, planetSignificators } = analyzeSignificators(planets, houses);
+      // 3. Analyze Significators
+      const { houseSignificators, planetSignificators } = analyzeSignificators(planets, houses, isAdam);
 
       // 4. Calculate Ruling Planets
       const rulingPlanets = calculateRulingPlanets(undefined, undefined, profile.latitude, profile.longitude);
@@ -253,7 +264,7 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
 
   useEffect(() => {
     buildKPChartForProfile(selectedProfile);
-  }, [selectedProfile, horoscopeData]);
+  }, [selectedProfile]);
 
   const handleBirthFormSubmit = async (details: BirthDetails) => {
     try {
@@ -280,7 +291,7 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
   };
 
   return (
-    <div className="space-y-6 text-ds-secondary selection:bg-ds-primary/20">
+    <div className="min-h-screen bg-ds-surface-container text-ds-secondary py-4 sm:py-6 px-2 sm:px-4 lg:px-6 space-y-6 selection:bg-ds-primary/20">
       <div className="max-w-7xl mx-auto space-y-6">
         
         {/* Header & Person Selector (Only if not hidden) */}
@@ -382,18 +393,69 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
           </div>
         )}
 
-        {/* Stacked Sections for KP Astrology */}
+        {/* Navigation Tabs (Positions at top) */}
+        {!hideSubTabs && (
+          <div className="flex items-center gap-1.5 bg-ds-surface border border-ds-secondary/15 p-1 rounded-xl shadow-2xs overflow-x-auto no-scrollbar">
+            {[
+              { id: 'charts', label: 'RVA Triple Charts', icon: Layers },
+              { id: 'chart', label: 'Cusps & CSL', icon: BarChart3 },
+              { id: 'dasha', label: 'Vimshottari Dasha', icon: Clock },
+              { id: 'ruling', label: 'Ruling Planets (RP)', icon: Compass },
+              { id: 'analysis', label: '6-Domain Assessment', icon: ShieldAlert },
+              { id: 'query', label: 'KP Verdict Engine', icon: Sparkles },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`flex-1 min-w-[130px] sm:min-w-0 px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer ${
+                    isActive
+                      ? 'bg-ds-secondary text-ds-on-secondary shadow-sm'
+                      : 'text-ds-on-surface-variant hover:text-ds-secondary hover:bg-ds-surface-container'
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-ds-tertiary' : 'text-ds-primary'}`} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Tab Content Rendering */}
         {kpChart && (
-          <div className="space-y-6 pb-10">
-            {/* Cusps & Planet Significators Tables */}
-            <div className="flex flex-col gap-6">
-              <CuspTable houses={kpChart.houses} />
-              <PlanetSignificatorsTable
-                planets={kpChart.planets}
-                planetSignificators={kpChart.planetSignificators}
-                currentDasha={kpChart.currentDasha}
+          <div className="space-y-6 animate-in fade-in duration-150">
+            {activeTab === 'charts' && (
+              <RVATripleCharts kpChart={kpChart} horoscopeData={horoscopeData} />
+            )}
+            {activeTab === 'predictions' && <QueryVerdictPanel chart={kpChart} />}
+            {activeTab === 'dasha' && dashaInfo && (
+              <VimshottariDashaTab
+                dashaInfo={dashaInfo}
+                nativeName={kpChart.birthData.name}
+                birthDate={kpChart.birthData.date}
               />
-            </div>
+            )}
+            {activeTab === 'chart' && (
+              <div className="space-y-6">
+                <CuspTable houses={kpChart.houses} />
+                <PlanetSignificatorsTable
+                  planets={kpChart.planets}
+                  planetSignificators={kpChart.planetSignificators}
+                />
+              </div>
+            )}
+            {activeTab === 'ruling' && (
+              <RulingPlanetsWidget
+                rulingPlanets={kpChart.rulingPlanets}
+                latitude={selectedProfile.latitude}
+                longitude={selectedProfile.longitude}
+              />
+            )}
+            {activeTab === 'analysis' && <DomainPredictionsView chart={kpChart} />}
+            {activeTab === 'query' && <KPQueryView chart={kpChart} />}
           </div>
         )}
 

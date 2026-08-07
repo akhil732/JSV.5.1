@@ -36,20 +36,6 @@ import { calculateKPSubLord, ZODIAC_SIGNS } from '../../lib/kp/subLordMapper';
 import { analyzeSignificators, getHouseOccupied } from '../../lib/kp/significatorAnalyzer';
 import { calculatePlacidusCusps } from '../../lib/kp/placidusCalculator';
 import { calculateRulingPlanets } from '../../lib/kp/rulingPlanetsCalculator';
-import { computeLiveTransitSnapshot, renderGocharaPromptBlock } from '../../lib/engines/LiveTransitEngine';
-import { KeywordMatcher } from '../../lib/kp/queryIntentRecognizer';
-
-/**
- * Resolves the native's actual Chandra Rasi (Moon sign) from whatever data is
- * available, falling back to Aries ONLY if nothing is present (never silently
- * defaults to a different native's chart).
- */
-function resolveMoonSignForTransit(gt: { horoscopeData?: any; birthDetails?: BirthDetails }): string {
-  const hd = gt.horoscopeData;
-  const d1 = hd?.horoscope?.divisional_charts?.['D-1_rasi'] || hd?.rasi;
-  const moonSign = d1?.Moon?.sign;
-  return moonSign || 'Aries';
-}
 
 export type ConsultationPersona = 'classical_parashari' | 'vedic_divisional' | 'vedic_remedial' | 'kp_stellar' | 'quick';
 
@@ -273,41 +259,35 @@ Venus Pratyantardasha (17-Mar-2026 to 05-Sep-2026)
 Active Dasha Phase Details: Mercury governs 5th and 8th houses from Lagna, placed in the 9th house. Venus is 9th and 4th house lord.
 
 ANALYSIS RULES:
-1. Natal/Dasha analysis from Lagna.
-${renderGocharaPromptBlock(computeLiveTransitSnapshot(resolveMoonSignForTransit({ horoscopeData: (gt as any).horoscopeData, birthDetails: (gt as any).birthDetails })))}
+1. Natal/Dasha analysis from Lagna (Aquarius).
+2. Gochara (Transit) analysis from Moon Sign (Chandra Rasi - Libra) for ALL 9 PLANETS:
+   - Saturn (శని): Transits Pisces (6th house from Moon - highly supportive, victory over enemies/obstacles, health, career elevation).
+   - Jupiter (గురు): Transits Cancer (10th from Moon - exalted transit, professional action, new responsibilities, learning/mentorship).
+   - Rahu (రాహువు): Transits Aquarius (5th from Moon - speculative mind, unconventional ideas, high ambition).
+   - Ketu (కేతువు): Transits Leo (11th from Moon - detached gains, spiritual associations, sudden windfalls).
+   - Sun (సూర్యుడు): Transits Cancer (10th from Moon - power, career visibility, recognition from superiors) / Leo (11th from Moon - direct gains, high visibility).
+   - Mars (కుజుడు): Transits Virgo (12th from Moon - dynamic energy direction, foreign interests, elevated expenditure).
+   - Mercury (బుధుడు): Transits Leo (11th from Moon - financial/intellectual gains, active communication).
+   - Venus (శుక్రుడు): Transits Virgo (12th from Moon - luxury spending, artistic solitude, relationship adjustments).
+   - Moon (చంద్రుడు): Dynamic daily transits influencing immediate emotional patterns.
 3. Translate all analysis into Telugu script, including standard terms.
 
-Structure your response strictly according to the following template:
+Structure your response exactly as follows:
+## 1. లగ్న కుండలి విశ్లేషణ (Lagna Kundali Analysis)
+- **లగ్న మరియు లగ్నాధిపతి స్థితి (Lagna & Lagna Lord Status)**: [Detailed analysis in Telugu]
+- **గ్రహాల స్థితి, ఉచ్ఛ, నీచ మరియు దృష్టి విశ్లేషణ (Placements, dignity, aspects)**: [Detailed analysis in Telugu]
 
-[BEGIN OUTPUT TEMPLATE]
-మీ చంద్ర రాశి [Insert Moon Sign] మరియు మీ పంచాంగం/గోచార ప్రకారం [Insert major transit like Saturn/Rahu/Jupiter], [Insert Lagna] లగ్నాన్ని మొదటి ఇల్లుగా తీసుకుని లగ్న కుండలి, దశా-అంతర్దశ, మరియు గోచార ఫలితాల సమగ్ర విశ్లేషణ కింద ఇవ్వబడింది.
+## 2. దశా-అంతర్దశా విశ్లేషణ (Dasha-Antardasha Analysis)
+- **ప్రస్తుత దశా-అంతర్దశా వివరణ (Current Dasha-Antardasha Overview)**: [Detailed analysis in Telugu]
+- **లగ్నం నుండి గ్రహాల స్థితి మరియు ఫలితాలు (Planetary houses ruled/occupied and predictions from Lagna)**: [Detailed analysis in Telugu]
 
-### 1. లగ్న కుండలి విశ్లేషణ (Lagna Kundali Analysis)
+## 3. గోచార విశ్లేషణ (Gochara Analysis)
+- **చంద్ర రాశి నుండి 9 గ్రహాల గోచారం (Transits of All 9 Planets from Chandra Rasi - Libra)**: [Detailed comprehensive analysis in Telugu for each of the 9 planets: Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu, and Ketu]
+- **కీలక గ్రహాల సంచారం మరియు వాటి ఫలితాలు (Key Planetary Transits and Results)**: [Detailed focused analysis of Saturn in 6th, Jupiter in 10th, Rahu in 5th, and Ketu in 11th in Telugu]
 
-* **1వ ఇల్లు ([Lagna Sign]):** [Planets and status]
-* **[X]వ ఇల్లు ([Sign]):** [Planets and status]
-
-### 2. దశా - అంతర్దశా విశ్లేషణ (Dasha - Antardasha Analysis)
-
-ప్రస్తుతం మీకు [Mahadasha Lord] మహర్దశలో [Antardasha Lord] అంతర్దశ నడుస్తోంది.
-
-* **మహర్దశ నాథుడు ([Lord]):** [Explain the lord's rulership from Lagna, its placement in the chart, and general themes/results it will produce.]
-* **అంతర్దశ నాథుడు ([Lord]):** [Explain the sub-lord's placement, conjunctions, and specific psychological or material effects on the native during this period.]
-
-### 3. గోచార విశ్లేషణ (Gochara Analysis - From Moon Sign [Moon Sign])
-
-* **[Area 1 - e.g., ఆర్థిక విషయాలు (Finance & Wealth)]:** [Explain how the transits affect this area.]
-* **[Area 2 - e.g., కుటుంబం మరియు మాటతీరు (Family & Speech)]:** [Explain how the transits affect this area.]
-* **[Area 3 - e.g., వృత్తి మరియు ఆరోగ్యం (Career & Health)]:** [Explain how the transits affect this area.]
-
-### 4. తుది విశ్లేషణ మరియు సూచనలు (Final Conclusion & Remedies)
-
-* **ముగింపు:** [Provide a 2-3 sentence summary synthesizing the Dasha and Gochara. Note the overall theme—whether it is a time for caution, growth, stability, etc.]
-* **పరిహారాలు:**
-* **[Remedy Name 1]:** [Instruction for remedy 1]
-* **[Remedy Name 2]:** [Instruction for remedy 2]
-* **[Remedy Name 3]:** [Instruction for remedy 3]
-[END OUTPUT TEMPLATE]
+## 4. ముగింపు మరియు పరిహారాలు (Conclusion & Remedies)
+- **భవిష్యత్ సూచనలు మరియు సలహాలు (Future Guidance & Advice)**: [Detailed analysis in Telugu]
+- **క్లాసికల్ వేద గ్రంథాల ఆధారంగా నిర్దిష్ట పరిహారాలు (Actionable classical remedies)**: [Detailed analysis in Telugu]
 `
 };
 
@@ -844,73 +824,97 @@ ${formatQuickDynamicProfile(groundTruth, nativeName)}
 
 ANALYSIS RULES:
 1. Natal/Dasha analysis from Lagna.
-${renderGocharaPromptBlock(computeLiveTransitSnapshot(resolveMoonSignForTransit(groundTruth)))}
+2. Gochara (Transit) analysis from Moon Sign for ALL 9 PLANETS:
+   - Saturn (శని): Transits Pisces (6th house from Moon - highly supportive, victory over enemies/obstacles, health, career elevation).
+   - Jupiter (గురు): Transits Cancer (10th from Moon - exalted transit, professional action, new responsibilities, learning/mentorship).
+   - Rahu (రాహువు): Transits Aquarius (5th from Moon - speculative mind, unconventional ideas, high ambition).
+   - Ketu (కేతువు): Transits Leo (11th from Moon - detached gains, spiritual associations, sudden windfalls).
+   - Sun (సూర్యుడు): Transits Cancer (10th from Moon - power, career visibility, recognition from superiors) / Leo (11th from Moon - direct gains, high visibility).
+   - Mars (కుజుడు): Transits Virgo (12th from Moon - dynamic energy direction, foreign interests, elevated expenditure).
+   - Mercury (బుधుడు): Transits Leo (11th from Moon - financial/intellectual gains, active communication).
+   - Venus (శుక్రుడు): Transits Virgo (12th from Moon - luxury spending, artistic solitude, relationship adjustments).
+   - Moon (చంద్రుడు): Dynamic daily transits influencing immediate emotional patterns.
 3. Translate all analysis into Telugu script, including standard terms.
 
-STRICT OUTPUT FORMATTING & CLIENT DELIVERY DIRECTIVES (MANDATORY):
-1. ABSOLUTELY NO RAW CODE TAGS: Do NOT output raw system variables or code tags like {activeVimshottariDesc}, {promise}, or {confidenceScore} in your text under any circumstances.
-2. ABSOLUTELY NO SYSTEM DIAGNOSTIC NOISE: Do NOT output internal system diagnostic flags or missing chart logs (e.g., "Not Found — Requires Mother's Lagna", "Requires D-24 Chaturvimshamsha", "MISSING DATA") in the report.
-3. STRICT TEMPLATE COMPLIANCE: You MUST strictly adhere to the exact [BEGIN OUTPUT TEMPLATE] structure below without creating custom section headers or arbitrary nested bullet structures.
+Structure your response exactly as follows:
+## 1. లగ్న కుండలి విశ్లేషణ (Lagna Kundali Analysis)
+- **లగ్న మరియు లగ్నాధిపతి స్థితి (Lagna & Lagna Lord Status)**: [Detailed analysis in Telugu]
+- **గ్రహాల స్థితి, ఉచ్ఛ, నీచ మరియు దృష్టి విశ్లేషణ (Placements, dignity, aspects)**: [Detailed analysis in Telugu]
 
-[BEGIN OUTPUT TEMPLATE]
-మీ చంద్ర రాశి [Insert Moon Sign] మరియు మీ పంచాంగం/గోచార ప్రకారం [Insert major transit like Saturn/Rahu/Jupiter], [Insert Lagna] లగ్నాన్ని మొదటి ఇల్లుగా తీసుకుని లగ్న కుండలి, దశా-అంతర్దశ, మరియు గోచార ఫలితాల సమగ్ర విశ్లేషణ కింద ఇవ్వబడింది.
+## 2. దశా-అంతర్దశా విశ్లేషణ (Dasha-Antardasha Analysis)
+- **ప్రస్తుత దశా-అంతర్దశా వివరణ (Current Dasha-Antardasha Overview)**: [Detailed analysis in Telugu]
+- **లగ్నం నుండి గ్రహాల స్థితి మరియు ఫలితాలు (Planetary houses ruled/occupied and predictions from Lagna)**: [Detailed analysis in Telugu]
 
-### 1. లగ్న కుండలి విశ్లేషణ (Lagna Kundali Analysis)
+## 3. గోచార విశ్లేషణ (Gochara Analysis)
+- **చంద్ర రాశి నుండి 9 గ్రహాల గోచారం (Transits of All 9 Planets from Chandra Rasi)**: [Detailed comprehensive analysis in Telugu for each of the 9 planets: Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu, and Ketu]
+- **కీలక గ్రహాల సంచారం మరియు వాటి ఫలితాలు (Key Planetary Transits and Results)**: [Detailed focused analysis of Saturn, Jupiter, Rahu, and Ketu in Telugu]
 
-* **1వ ఇల్లు ([Lagna Sign]):** [Planets and status]
-* **[X]వ ఇల్లు ([Sign]):** [Planets and status]
-
-### 2. దశా - అంతర్దశా విశ్లేషణ (Dasha - Antardasha Analysis)
-
-ప్రస్తుతం మీకు [Mahadasha Lord] మహర్దశలో [Antardasha Lord] అంతర్దశ నడుస్తోంది.
-
-* **మహర్దశ నాథుడు ([Lord]):** [Explain the lord's rulership from Lagna, its placement in the chart, and general themes/results it will produce.]
-* **అంతర్దశ నాథుడు ([Lord]):** [Explain the sub-lord's placement, conjunctions, and specific psychological or material effects on the native during this period.]
-
-### 3. గోచార విశ్లేషణ (Gochara Analysis - From Moon Sign [Moon Sign])
-
-* **[Area 1 - e.g., ఆర్థిక విషయాలు (Finance & Wealth)]:** [Explain how the transits affect this area.]
-* **[Area 2 - e.g., కుటుంబం మరియు మాటతీరు (Family & Speech)]:** [Explain how the transits affect this area.]
-* **[Area 3 - e.g., వృత్తి మరియు ఆరోగ్యం (Career & Health)]:** [Explain how the transits affect this area.]
-
-### 4. తుది విశ్లేషణ మరియు సూచనలు (Final Conclusion & Remedies)
-
-* **ముగింపు:** [Provide a 2-3 sentence summary synthesizing the Dasha and Gochara. Note the overall theme—whether it is a time for caution, growth, stability, etc.]
-* **పరిహారాలు:**
-* **[Remedy Name 1]:** [Instruction for remedy 1]
-* **[Remedy Name 2]:** [Instruction for remedy 2]
-* **[Remedy Name 3]:** [Instruction for remedy 3]
-[END OUTPUT TEMPLATE]
+## 4. ముగింపు మరియు పరిహారాలు (Conclusion & Remedies)
+- **భవిష్యత్ సూచనలు మరియు సలహాలు (Future Guidance & Advice)**: [Detailed analysis in Telugu]
+- **క్లాసికల్ వేద గ్రంథాల ఆధారంగా నిర్దిష్ట పరిహారాలు (Actionable classical remedies)**: [Detailed analysis in Telugu]
 `;
   }
 
   prompt = prompt
-    .replaceAll('{nativeName}', nativeName)
-    .replaceAll('{cuspSubLord}', groundTruth.cuspSubLord)
-    .replaceAll('{cuspSubLordHouses}', groundTruth.cuspSubLordHouses.join(', ') || 'Not Computed')
-    .replaceAll('{significators}', groundTruth.primarySignificators.join(', ') || 'None identified')
-    .replaceAll('{promise}', groundTruth.promise)
-    .replaceAll('{confidenceScore}', String(groundTruth.confidenceScore))
-    .replaceAll('{timing}', groundTruth.timing)
-    .replaceAll('{activeVimshottariDesc}', groundTruth.activeVimshottariDesc)
-    .replaceAll('{transitModulation}', groundTruth.transitModulation)
-    .replaceAll('{houseDomain}', groundTruth.houseDomain)
-    .replaceAll('{divisionalDataStatus}', buildDivisionalDataStatus(groundTruth));
+    .replace(/{nativeName}/g, nativeName)
+    .replace('{cuspSubLord}', groundTruth.cuspSubLord)
+    .replace('{cuspSubLordHouses}', groundTruth.cuspSubLordHouses.join(', ') || 'Not Computed')
+    .replace('{significators}', groundTruth.primarySignificators.join(', ') || 'None identified')
+    .replace('{promise}', groundTruth.promise)
+    .replace(/{confidenceScore}/g, String(groundTruth.confidenceScore))
+    .replace('{timing}', groundTruth.timing)
+    .replace('{activeVimshottariDesc}', groundTruth.activeVimshottariDesc)
+    .replace('{transitModulation}', groundTruth.transitModulation)
+    .replace('{houseDomain}', groundTruth.houseDomain)
+    .replace('{divisionalDataStatus}', buildDivisionalDataStatus(groundTruth));
 
   prompt += `
 
 ───────────────────────────────────────────────────────────────────────
-CRITICAL CLIENT DELIVERY & COMPLIANCE DIRECTIVES
+MISSING DATA & TRANSPARENCY RULES
 ───────────────────────────────────────────────────────────────────────
 
-1. ABSOLUTE PROHIBITION ON CODE TAGS & PLACEHOLDERS:
-   Do NOT leave raw backend code tags or placeholders such as {activeVimshottariDesc}, {promise}, or {confidenceScore} exposed in the output text. All parameters must be replaced with clear natural language descriptions.
+The following data is NOT AVAILABLE for this consultation:
+${(groundTruth.missingDataItems || []).map(item => `• ${item}`).join('\n')}
 
-2. ABSOLUTE PROHIBITION ON SYSTEM DIAGNOSTIC NOISE:
-   Do NOT output internal system diagnostic flags, missing data errors, or developer logs (such as "Not Found — Requires Mother's Lagna", "Requires D-24 Chaturvimshamsha", or "MISSING DATA") in the client response. Produce a clean, professional, client-ready report based on available chart data.
+IF YOUR ANALYSIS REQUIRES THIS DATA:
+→ Do NOT fabricate or assume values
+→ Respond with: "Not Found — Requires [DATA NAME]"
+→ Ask the native to provide: ${buildDataRequestString(groundTruth)}
 
-3. STRICT ADHERENCE TO OUTPUT TEMPLATE:
-   Follow the required output template structure precisely. Do NOT add custom section headers, arbitrary nested sub-bullet levels, or unrequested structural variations.
+CHART DATA VALIDATION:
+${buildChartDataValidation(groundTruth)}
+
+───────────────────────────────────────────────────────────────────────
+SUPPLEMENTARY DATA (Divisional Charts & Additional Context)
+───────────────────────────────────────────────────────────────────────
+
+[TO BE APPENDED BY CALLER IF AVAILABLE]
+- D-9 Navamsha (if computed)
+- D-7 Saptamsha (if computed, requires Mother's Lagna)
+- D-24 Chaturvimshamsha (if computed)
+- Pratyantardasha details (if available — currently NOT included)
+
+───────────────────────────────────────────────────────────────────────
+COMPLIANCE CHECKLIST (BEFORE RESPONDING)
+───────────────────────────────────────────────────────────────────────
+
+✓ MUST DO:
+  ☐ Lock verdict to "{promise}" (do NOT change it)
+  ☐ Lock confidence to {confidenceScore}% (never generate your own)
+  ☐ Reference only House ${groundTruth.primaryHouse} as primary domain
+  ☐ Cite dasha as "{activeVimshottariDesc}" (do NOT add pratyantardasha)
+  ☐ Flag missing data with "Not Found — Requires [NAME]"
+  ☐ Cite classical texts (Phaladeepika, KP Textbook, Prof. K.S. Krishnamurti)
+
+✗ MUST NOT DO:
+  ☐ Invent confidence scores (73%, 85%, 90.5% are forbidden; use {confidenceScore}% only)
+  ☐ Contradict the KP verdict "{promise}" unless you say "ALTERNATIVE VIEW:"
+  ☐ State divisional chart placements not in "SUPPLEMENTARY DATA"
+  ☐ Mention pratyantardasha (only Mahadasha & Antardasha provided)
+  ☐ Fabricate chart data (Mother's Lagna, D-7, etc.)
+  ☐ Invent aspect names (Amrita Drishti, Parivraya Drishti, etc.)
+
 ───────────────────────────────────────────────────────────────────────
 `;
 
@@ -998,46 +1002,24 @@ export function buildSystemPrompt(
 // ─────────────────────────────────────────────────────────────────────────────
 
 function parseQueryToKPQuery(queryText: string): KPQuery {
-  const intentResult = KeywordMatcher.analyzeQuery(queryText);
-  if (intentResult && intentResult.domain) {
-    const domainToTopicMap: Record<string, TopicEnum> = {
-      MARRIAGE: 'MARRIAGE',
-      CAREER: 'CAREER',
-      FINANCE: 'FINANCE',
-      HEALTH: 'HEALTH',
-      EDUCATION: 'EDUCATION',
-      CHILDREN: 'CHILDREN',
-      PROPERTY: 'GENERAL',
-      LEGAL: 'GENERAL',
-      TRAVEL: 'GENERAL',
-      SPIRITUAL: 'GENERAL',
-      RELATIONSHIPS: 'MARRIAGE'
-    };
-    const topic = domainToTopicMap[intentResult.domain] || 'GENERAL';
-    return {
-      question: queryText,
-      topic,
-      relevantHouse: intentResult.primaryHouse || 1
-    };
-  }
-
   const lower = queryText.toLowerCase();
-  if (lower.includes('marri') || lower.includes('spous') || lower.includes('wedding') || lower.includes('వివాహ') || lower.includes('పెళ్లి') || lower.includes('కళ్యాణ') || lower.includes('సంబంధం') || lower.includes('pelli') || lower.includes('vivaha')) {
+  
+  if (lower.includes('marri') || lower.includes('spous') || lower.includes('relationship') || lower.includes('wedding')) {
     return { question: queryText, topic: 'MARRIAGE', relevantHouse: 7 };
   }
-  if (lower.includes('job') || lower.includes('career') || lower.includes('work') || lower.includes('ఉద్యోగ') || lower.includes('వ్యాపార') || lower.includes('పని') || lower.includes('udyog')) {
+  if (lower.includes('job') || lower.includes('career') || lower.includes('promot') || lower.includes('profession') || lower.includes('business')) {
     return { question: queryText, topic: 'CAREER', relevantHouse: 10 };
   }
-  if (lower.includes('money') || lower.includes('wealth') || lower.includes('finan') || lower.includes('ధన') || lower.includes('డబ్బు') || lower.includes('ఆదాయ') || lower.includes('dabbu')) {
+  if (lower.includes('money') || lower.includes('wealth') || lower.includes('finan') || lower.includes('income') || lower.includes('asset')) {
     return { question: queryText, topic: 'FINANCE', relevantHouse: 2 };
   }
-  if (lower.includes('health') || lower.includes('disease') || lower.includes('ఆరోగ్య') || lower.includes('జబ్బు') || lower.includes('వ్యాధి')) {
+  if (lower.includes('health') || lower.includes('disease') || lower.includes('cur') || lower.includes('sick')) {
     return { question: queryText, topic: 'HEALTH', relevantHouse: 1 };
   }
-  if (lower.includes('educat') || lower.includes('study') || lower.includes('చదువు') || lower.includes('విద్య') || lower.includes('పరీక్ష')) {
+  if (lower.includes('educat') || lower.includes('study') || lower.includes('exam') || lower.includes('degree')) {
     return { question: queryText, topic: 'EDUCATION', relevantHouse: 5 };
   }
-  if (lower.includes('child') || lower.includes('kid') || lower.includes('పిల్ల') || lower.includes('సంతాన') || lower.includes('గర్భ')) {
+  if (lower.includes('child') || lower.includes('kid') || lower.includes('son') || lower.includes('daughter') || lower.includes('pregnancy')) {
     return { question: queryText, topic: 'CHILDREN', relevantHouse: 5 };
   }
   
@@ -1076,6 +1058,11 @@ function buildKPChartFromHoroscope(horoscope: any, birthDetails: BirthDetails): 
     }
   });
 
+  // Houses computed BEFORE planets — this function previously computed
+  // planets with a hardcoded significatorOf: [1, 2, 7] fallback, then
+  // computed houses afterward, meaning L1/L3/L4 significators (all derived
+  // from this array in analyzeSignificators) were wrong for every native
+  // that reaches the Quick Astro Tab through this path.
   const ascDegree = planetLongitudes.Lagna ?? 0;
   const lat = birthDetails.latitude || 28.6139;
   const houses = calculatePlacidusCusps(ascDegree, lat, birthDetails.date || '1996-11-01', birthDetails.time || '12:00');
@@ -1084,7 +1071,6 @@ function buildKPChartFromHoroscope(horoscope: any, birthDetails: BirthDetails): 
   const planets = planetNames.map((pName) => {
     const deg = planetLongitudes[pName] ?? 180;
     const subLordChain = calculateKPSubLord(deg);
-    const occupiedHouse = getHouseOccupied(deg, houses);
     return {
       name: pName,
       sign: subLordChain.sign,
@@ -1094,11 +1080,11 @@ function buildKPChartFromHoroscope(horoscope: any, birthDetails: BirthDetails): 
       starLord: subLordChain.starLord,
       subLord: subLordChain.subLord,
       subSubLord: subLordChain.subSubLord,
-      significatorOf: [occupiedHouse]
+      significatorOf: [getHouseOccupied(deg, houses)]
     };
   });
 
-  const { houseSignificators, planetSignificators } = analyzeSignificators(planets, houses);
+  const { houseSignificators, planetSignificators } = analyzeSignificators(planets, houses, false);
   const rulingPlanets = calculateRulingPlanets(undefined, undefined, lat, birthDetails.longitude || 77.2090);
 
   const moonDeg = planetLongitudes.Moon ?? 0;

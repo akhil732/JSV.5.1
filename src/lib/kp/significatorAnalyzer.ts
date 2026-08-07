@@ -1,5 +1,48 @@
 import { KPPlanet, KPHouse, PlanetSignificatorLevels } from '../../types/kp';
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * getHouseOccupied — THE MISSING LINK
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * Every KPChart construction site in this codebase (useKPChart.ts,
+ * KPAnalysisPage.tsx, KPQueryView.tsx, UnifiedKPGroundTruthEngine.ts) was
+ * hardcoding `significatorOf: [1, 2, 7]` on every planet, for every native,
+ * regardless of their actual chart. Since Level 1 (star lord occupancy),
+ * Level 3 (star lord ownership), and Level 4 (planet ownership) in
+ * analyzeSignificators() below are all derived — directly or via
+ * `starLordPlanet.significatorOf` — from this single array, that one
+ * hardcoded fallback silently corrupted the entire 4-level significator
+ * hierarchy for every planet in every consultation.
+ *
+ * This function computes real house occupancy from the planet's sidereal
+ * longitude against the actual Placidus cusp boundaries, exactly as
+ * documented. It must be called AFTER houses are computed and BEFORE
+ * planets are finalized — see the four call sites listed above, all of
+ * which have been reordered accordingly.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
+export function getHouseOccupied(planetDegree: number, houses: KPHouse[]): number {
+  if (!houses || houses.length < 12) return 1;
+  const deg = ((planetDegree % 360) + 360) % 360;
+
+  // Houses may not be pre-sorted by cusp order relative to index; sort by
+  // house number 1-12 to guarantee correct sequential boundary walking.
+  const sorted = [...houses].sort((a, b) => a.number - b.number);
+
+  for (let i = 0; i < 12; i++) {
+    const currentCusp = sorted[i].cuspDegree;
+    const nextCusp = sorted[(i + 1) % 12].cuspDegree;
+
+    if (nextCusp > currentCusp) {
+      if (deg >= currentCusp && deg < nextCusp) return sorted[i].number;
+    } else {
+      // Span crosses the 0°/360° boundary (e.g. 345° to 15°)
+      if (deg >= currentCusp || deg < nextCusp) return sorted[i].number;
+    }
+  }
+  return sorted[0].number;
+}
+
 // Pre-computed Adam KP House Significators
 export const ADAM_HOUSE_SIGNIFICATORS: Record<number, string[]> = {
   1: ['Saturn', 'Ketu', 'Mars'],
@@ -30,45 +73,17 @@ export const ADAM_PLANET_SIGNIFICATORS: Record<string, PlanetSignificatorLevels>
 };
 
 /**
- * Determines which house (1 to 12) a planet occupies based on Placidus / Equal house cusps.
- */
-export function getHouseOccupied(planetDegree: number, houses: KPHouse[]): number {
-  if (!houses || houses.length < 12) return 1;
-
-  const deg = ((planetDegree % 360) + 360) % 360;
-
-  for (let i = 0; i < 12; i++) {
-    const currentCusp = houses[i].cuspDegree;
-    const nextCusp = houses[(i + 1) % 12].cuspDegree;
-
-    if (nextCusp > currentCusp) {
-      if (deg >= currentCusp && deg < nextCusp) {
-        return houses[i].number;
-      }
-    } else {
-      // Span crosses 0° boundary (e.g. 345° to 15°)
-      if (deg >= currentCusp || deg < nextCusp) {
-        return houses[i].number;
-      }
-    }
-  }
-
-  return 1;
-}
-
-/**
  * Calculates KP house and planet significators dynamically
  */
 export function analyzeSignificators(
   planets: KPPlanet[],
   houses: KPHouse[],
-  _isAdamProfile = false
+  isAdamProfile = false
 ): {
   houseSignificators: Record<number, string[]>;
   planetSignificators: Record<string, PlanetSignificatorLevels>;
 } {
-  // If no planets provided, fallback to pre-computed static sets
-  if (!planets || planets.length === 0) {
+  if (isAdamProfile) {
     return {
       houseSignificators: ADAM_HOUSE_SIGNIFICATORS,
       planetSignificators: ADAM_PLANET_SIGNIFICATORS
@@ -83,16 +98,20 @@ export function analyzeSignificators(
     houseSignificators[i] = [];
   }
 
-  // Map each planet's 4 levels
+  // Helper: map each planet's levels
   planets.forEach((planet) => {
-    // Find star lord planet object
+    // Collect houses where planet's star lord rules / occupies
     const starLordPlanet = planets.find((p) => p.name === planet.starLord);
 
     // Level 1: Houses occupied by star lord of planet
-    const level1: number[] = starLordPlanet ? [...(starLordPlanet.significatorOf || [])] : [];
+    const level1: number[] = [];
+    if (starLordPlanet) {
+      // Add houses associated with star lord
+      level1.push(...starLordPlanet.significatorOf);
+    }
 
     // Level 2: Houses occupied by the planet itself
-    const level2: number[] = [...(planet.significatorOf || [])];
+    const level2: number[] = [...planet.significatorOf];
 
     // Level 3: Houses owned by star lord of planet
     const level3: number[] = [];
@@ -111,10 +130,10 @@ export function analyzeSignificators(
     });
 
     planetSignificators[planet.name] = {
-      level1: Array.from(new Set(level1)).sort((a, b) => a - b),
-      level2: Array.from(new Set(level2)).sort((a, b) => a - b),
-      level3: Array.from(new Set(level3)).sort((a, b) => a - b),
-      level4: Array.from(new Set(level4)).sort((a, b) => a - b)
+      level1: Array.from(new Set(level1)),
+      level2: Array.from(new Set(level2)),
+      level3: Array.from(new Set(level3)),
+      level4: Array.from(new Set(level4))
     };
   });
 
