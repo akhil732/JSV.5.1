@@ -733,7 +733,7 @@ export const StrategicReport: React.FC<StrategicReportProps> = ({
   const reportYear = birthDetails.date ? new Date(birthDetails.date).getFullYear() : 2026;
   const transitPositions = getTransitPositions(2026); // Anchor to current local era
 
-  const now = new Date("2026-07-20"); // anchored current local date
+  const now = new Date(); // anchored current local date
   const dashaData = calculateActiveDasha(horoscopeData, birthDetails.date, now);
 
   const activeMdLord = dashaData.mahadasha.lord;

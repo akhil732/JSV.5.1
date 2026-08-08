@@ -21,7 +21,7 @@ export function calculateRulingPlanets(
   // Calculate Moon position for query timestamp
   // Approximate tropical/sidereal moon progression
   const nowMs = targetDate.getTime();
-  const epochMs = new Date('2026-07-20T12:00:00').getTime();
+  const epochMs = new Date(2026, 6, 20, 12, 0, 0).getTime();
   const diffDays = (nowMs - epochMs) / (1000 * 60 * 60 * 24);
 
   // Reference Moon degree on July 20, 2026 @ 12:00 PM: Virgo (~165° sidereal longitude)

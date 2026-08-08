@@ -149,6 +149,11 @@ export default function App() {
         }
 
         const data = await res.json();
+        const hasUsableChart = data?.horoscope?.divisional_charts?.['D-1_rasi']
+          || data?.divisional_charts?.['D-1_rasi'];
+        if (!hasUsableChart) {
+          throw new Error('Horoscope response missing chart data (divisional_charts).');
+        }
         setHoroscopeReport(data);
       } catch (err: any) {
         console.warn('Warning fetching horoscope report:', err);

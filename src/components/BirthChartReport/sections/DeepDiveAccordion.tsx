@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Layers, BarChart2, Zap, Sparkles, Compass, Shield, ChevronDown, ChevronRight, Star } from 'lucide-react';
+import { computeLiveTransitSnapshot } from '../../../lib/engines/LiveTransitEngine';
 import styles from './DeepDiveAccordion.module.css';
 
 const ACCORDION_SECTIONS = [
@@ -271,11 +272,49 @@ const YogasContent: React.FC<{ data: any }> = ({ data }) => {
 
 /* --- Section 5: Transit Forecast --- */
 const TransitForecastContent: React.FC<{ data: any }> = ({ data }) => {
+  const { chartData } = data;
+  const divisionalCharts = chartData?.horoscope?.divisional_charts || chartData?.divisional_charts || {};
+  const moonSign = divisionalCharts["D-1_rasi"]?.Moon?.sign || "Aries";
+  const transitSnapshot = computeLiveTransitSnapshot(moonSign, new Date());
+
+  const jupiterPos = transitSnapshot.positions.Jupiter;
+  const saturnPos = transitSnapshot.positions.Saturn;
+  const rahuPos = transitSnapshot.positions.Rahu;
+  const ketuPos = transitSnapshot.positions.Ketu;
+
   const transits = [
-    { planet: 'Jupiter', sign: 'Cancer (Exalted)', house: '6th / 7th Activation', status: 'Direct', impact: 'Highly auspicious expansion in professional networks and partnership gains.' },
-    { planet: 'Saturn', sign: 'Pisces', house: '2nd / 3rd House Axis', status: 'Direct', impact: 'Demands disciplined financial planning and structured communication.' },
-    { planet: 'Rahu', sign: 'Aquarius', house: '1st / 12th Axis', status: 'Retrograde', impact: 'Spurs innovation, technology adaptation, and unconventional breakthroughs.' },
-    { planet: 'Ketu', sign: 'Leo', house: '6th / 7th Axis', status: 'Retrograde', impact: 'Encourages analytical detachment from unnecessary disputes and spiritual clarity.' },
+    {
+      planet: 'Jupiter',
+      sign: jupiterPos.sign,
+      house: `H${jupiterPos.houseFromMoon} from Moon`,
+      status: 'Direct',
+      impact: jupiterPos.classification === 'Supportive'
+        ? `Highly auspicious expansion in professional networks, partnership gains, and learning (transiting ${jupiterPos.houseFromMoon}th from Moon).`
+        : `Encourages internal reflection, professional consolidating, and wisdom development (transiting ${jupiterPos.houseFromMoon}th from Moon).`
+    },
+    {
+      planet: 'Saturn',
+      sign: saturnPos.sign,
+      house: `H${saturnPos.houseFromMoon} from Moon`,
+      status: 'Direct',
+      impact: saturnPos.classification === 'Supportive'
+        ? `Supports structured discipline, career stability, and systematic growth (transiting ${saturnPos.houseFromMoon}th from Moon).`
+        : `Demands disciplined financial planning, patient effort, and stress management (transiting ${saturnPos.houseFromMoon}th from Moon).`
+    },
+    {
+      planet: 'Rahu',
+      sign: rahuPos.sign,
+      house: `H${rahuPos.houseFromMoon} from Moon`,
+      status: 'Retrograde',
+      impact: `Spurs unconventional desires, material breakthroughs, and innovative learning pathways (transiting ${rahuPos.houseFromMoon}th from Moon).`
+    },
+    {
+      planet: 'Ketu',
+      sign: ketuPos.sign,
+      house: `H${ketuPos.houseFromMoon} from Moon`,
+      status: 'Retrograde',
+      impact: `Encourages spiritual detachment, analytical exploration, and release of old habits (transiting ${ketuPos.houseFromMoon}th from Moon).`
+    }
   ];
 
   return (

@@ -33,6 +33,13 @@ export const useKPChart = (person: any, chartData: any): KPChart | null => {
           planetLongitudes[stdKey] = absDeg;
         }
       });
+
+      // Defense-in-depth: If no planet longitudes are found, refuse to build a fabricated chart
+      if (Object.keys(planetLongitudes).length === 0) {
+        console.error('[useKPChart] No planet longitude data found in chartData — refusing to build a fabricated chart.');
+        return null;
+      }
+
       const moonDegree = planetLongitudes.Moon ?? 0;
 
       // Houses MUST be computed before planets so real house-occupancy

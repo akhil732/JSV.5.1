@@ -36,7 +36,7 @@ export const VimshottariDashaView: React.FC<VimshottariDashaViewProps> = ({ horo
   // Mode toggle
   const [activeFilter, setActiveFilter] = useState<'all' | 'current'>('all');
 
-  const now = new Date("2026-07-20"); // Anchored date consistent with report calculations
+  const now = new Date(); // Anchored date consistent with report calculations
 
   // Function to get Antardashas for a Mahadasha
   const getAntardashas = (md: any) => {

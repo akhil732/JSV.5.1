@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Clock, Activity, Flame, Shield, ArrowRight } from 'lucide-react';
 import { calculateActiveDasha } from '../../../lib/engines/DashaEngine';
+import { computeLiveTransitSnapshot } from '../../../lib/engines/LiveTransitEngine';
 import styles from './CurrentPhaseCard.module.css';
 
 const PLANET_QUALITIES: Record<string, string> = {
@@ -42,9 +43,15 @@ export const CurrentPhaseCard: React.FC<{ data: any }> = ({ data }) => {
 
     const adPct = Math.round(dashaRes.antardasha.percentComplete || 45);
 
-    // Major transits (2026 Gochara)
-    const activeSaturnTransit = 'Pisces (Saturn)';
-    const activeJupiterTransit = 'Cancer (Jupiter - Exalted)';
+    // Major transits (Go-chara)
+    const divisionalCharts = chartData?.horoscope?.divisional_charts || chartData?.divisional_charts || {};
+    const moonSign = divisionalCharts["D-1_rasi"]?.Moon?.sign || "Aries";
+    const transitSnapshot = computeLiveTransitSnapshot(moonSign, new Date());
+    const saturnTransitPos = transitSnapshot.positions.Saturn;
+    const jupiterTransitPos = transitSnapshot.positions.Jupiter;
+
+    const activeSaturnTransit = `${saturnTransitPos.sign} (Saturn)`;
+    const activeJupiterTransit = `${jupiterTransitPos.sign} (Jupiter)`;
 
     return {
       mdLord,

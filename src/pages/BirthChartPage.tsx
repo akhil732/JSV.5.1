@@ -69,7 +69,7 @@ export const ZODIAC_SIGNS = [
 export const formatRemainingTime = (endDate: Date): string => {
   try {
     // Reference date (update to new Date() for real-time)
-    const now = new Date("2026-07-20");
+    const now = new Date();
     
     if (now >= endDate) {
       return 'Completed';
@@ -256,7 +256,7 @@ export const BirthChartPage: React.FC<BirthChartPageProps> = ({
     endDate: '2027-04-12'
   };
 
-  const activeDasha = calculateActiveDasha(horoscopeReport, date, new Date("2026-07-20"));
+  const activeDasha = calculateActiveDasha(horoscopeReport, date, new Date());
 
   // ============================================================================
   // EXTRACT DIVISIONAL CHARTS AND CALENDAR INFO

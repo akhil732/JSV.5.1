@@ -33,6 +33,24 @@ export const PLANETS_SHORT: Record<string, string> = {
   "Ketu": "Ke"
 };
 
+export const getUnrecognizedSignError = (chartData: any): string | null => {
+  if (!chartData) return null;
+  const ascSignName = chartData.Ascendant?.sign || chartData.Lagna?.sign;
+  if (ascSignName && !SIGN_MAP[ascSignName]) {
+    console.error(`[DivisionalChart] Unrecognized Ascendant sign name: "${ascSignName}"`);
+    return `Unrecognized Ascendant sign name: "${ascSignName}"`;
+  }
+  const grahas = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu"];
+  for (const g of grahas) {
+    const gData = chartData[g];
+    if (gData?.sign && !SIGN_MAP[gData.sign]) {
+      console.error(`[DivisionalChart] Unrecognized sign name for planet ${g}: "${gData.sign}"`);
+      return `Unrecognized sign name for planet ${g}: "${gData.sign}"`;
+    }
+  }
+  return null;
+};
+
 const NORTH_INDIAN_LAYOUTS: Record<number, {
   points: string;
   rashi: { x: number; y: number };
@@ -301,6 +319,7 @@ export const DivisionalChart: React.FC<DivisionalChartProps> = ({ horoscopeData,
   const currentChartKey = getTabKey(activeTab);
   const currentChart = divisionalCharts[currentChartKey];
   const chartAvailable = !!currentChart;
+  const validationError = currentChart ? getUnrecognizedSignError(currentChart) : null;
 
   const retrogradePlanets = horoscopeData?.horoscope?.planetary_states?.retrograde_planets || [];
 
@@ -395,8 +414,7 @@ export const DivisionalChart: React.FC<DivisionalChartProps> = ({ horoscopeData,
     const offsets = getPlanetOffsets(planets.length);
     return planets.map((p, idx) => {
       const isLagna = p === 'L' || p === 'Asc' || p === 'Lg';
-      const isMercury = p === 'Me' || p === 'Mercury';
-      const isRetro = !isLagna && !isMercury && retrogradePlanets.includes(
+      const isRetro = !isLagna && retrogradePlanets.includes(
         p === 'Su' ? 'Sun' : p === 'Mo' ? 'Moon' : p === 'Ma' ? 'Mars' : p === 'Me' ? 'Mercury' : p === 'Ju' ? 'Jupiter' : p === 'Ve' ? 'Venus' : p === 'Sa' ? 'Saturn' : p === 'Ra' ? 'Rahu' : p === 'Ke' ? 'Ketu' : ''
       );
       const offset = offsets[idx] || { dx: 0, dy: 0 };
@@ -730,7 +748,7 @@ export const DivisionalChart: React.FC<DivisionalChartProps> = ({ horoscopeData,
 
   const birthDetails = horoscopeData?.birth_details || {};
   const transitPositions = getTransitPositions(2026);
-  const now = new Date("2026-07-20");
+  const now = new Date();
   const dashaData = calculateActiveDasha(horoscopeData, birthDetails.date, now);
   const activeMdLord = dashaData?.mahadasha?.lord || "Venus";
   const activeAdLord = dashaData?.antardasha?.lord || "Sun";
@@ -822,6 +840,11 @@ export const DivisionalChart: React.FC<DivisionalChartProps> = ({ horoscopeData,
                 <div className="text-center text-ds-on-surface-variant p-6">
                   <p className="text-base font-serif text-ds-primary mb-2">{l.missingChart}</p>
                   <p className="text-xs">{l.missingChartDesc}</p>
+                </div>
+              ) : validationError ? (
+                <div className="text-center text-ds-error-crimson p-6">
+                  <p className="text-base font-serif font-bold mb-2 text-red-500">Chart Construction Error</p>
+                  <p className="text-xs font-mono bg-ds-surface-container p-3 rounded-lg border border-red-500/20">{validationError}</p>
                 </div>
               ) : birthChartStyle === 'South' ? (
                 renderSouthIndianChart(currentChart, activeTab === 'D1' ? 'RASI CHART' : 'NAVAMSA')

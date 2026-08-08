@@ -16,7 +16,7 @@ export const VimshottariDashaTab: React.FC<VimshottariDashaTabProps> = ({
   const [expandedMd, setExpandedMd] = useState<string | null>(dashaInfo.mahadasha);
   const [expandedAd, setExpandedAd] = useState<string | null>(dashaInfo.antardasha);
 
-  const targetDate = new Date("2026-07-26");
+  const targetDate = new Date();
 
   const formatDate = (d: Date | string) => {
     const dateObj = typeof d === 'string' ? new Date(d) : d;
