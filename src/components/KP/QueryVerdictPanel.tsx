@@ -449,7 +449,7 @@ Cusp Sub Lord: ${verdict.reasoning.cuspSubLord}`;
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-ds-on-surface-variant pt-2 border-t border-ds-secondary/15">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-ds-on-surface-variant pt-2 border-t border-ds-secondary/15">
               <div>
                 <span className="text-ds-secondary font-medium">House Cusp Sub Lord:</span>{' '}
                 <strong className="text-ds-primary">{verdict.reasoning.cuspSubLord}</strong>
@@ -466,6 +466,22 @@ Cusp Sub Lord: ${verdict.reasoning.cuspSubLord}`;
                 <span className="text-ds-secondary font-medium">Dasha Trigger:</span>{' '}
                 <span className="text-sky-600 dark:text-sky-400 font-bold">{verdict.reasoning.dashaStatus}</span>
               </div>
+              
+              <div className="sm:col-span-2 border-t border-ds-secondary/10 pt-2.5">
+                <span className="text-ds-secondary font-medium block mb-0.5">KP Transit Trigger:</span>
+                <span className="text-ds-on-surface text-[11px] leading-normal block bg-ds-surface-container/60 p-2 rounded-lg border border-ds-secondary/5 font-sans">
+                  {verdict.reasoning.transitSupport}
+                </span>
+              </div>
+
+              {verdict.reasoning.vedicGocharaCheck && (
+                <div className="sm:col-span-2 border-t border-ds-secondary/10 pt-1">
+                  <span className="text-ds-secondary font-medium block mb-0.5">Vedic Gochara Cross-Check:</span>
+                  <span className="text-ds-on-surface text-[11px] leading-normal block bg-ds-surface-container/60 p-2 rounded-lg border border-ds-secondary/5 font-sans italic">
+                    {verdict.reasoning.vedicGocharaCheck}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>

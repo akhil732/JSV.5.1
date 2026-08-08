@@ -149,6 +149,7 @@ export interface KPVerdict {
     significators: string[];
     dashaStatus: string;
     transitSupport: string;
+    vedicGocharaCheck?: string;
     vedicSupport: string;
   };
   contextualization?: {

@@ -1,4 +1,4 @@
-import { KPChart, KPQuery, KPVerdict, KPVerdictStep, TopicEnum } from '../../types/kp';
+import { KPChart, KPQuery, KPVerdict, KPVerdictStep, TopicEnum, KPHouse } from '../../types/kp';
 import { QueryAnalysisResult, GatekeeperVerdict } from './queryIntent';
 import { QueryIntentRecognizer } from './queryIntentRecognizer';
 import { lookupTriplePlanetProfession, getBusinessSuitability } from './professionalSignificators';
@@ -6,6 +6,7 @@ import { computeLiveTransitSnapshot } from '../engines/LiveTransitEngine';
 import { getRankedSignificators } from './significatorAnalyzer';
 import { evaluateCuspPromise, HouseNumber } from './gatekeeperRules';
 import { AppError, ErrorCode } from '../errors/AppError';
+import { calculateKPSubLord } from './subLordMapper';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
@@ -77,6 +78,29 @@ const SIGN_LORD_BY_NAME: Record<string, string> = {
   Leo: 'Sun', Virgo: 'Mercury', Libra: 'Venus', Scorpio: 'Mars',
   Sagittarius: 'Jupiter', Capricorn: 'Saturn', Aquarius: 'Saturn', Pisces: 'Jupiter'
 };
+
+function getNatalHouseForLongitude(longitude: number, houses: KPHouse[]): number {
+  const sortedHouses = [...houses].sort((a, b) => a.cuspDegree - b.cuspDegree);
+  for (let i = 0; i < sortedHouses.length; i++) {
+    const currentHouse = sortedHouses[i];
+    const nextHouse = sortedHouses[(i + 1) % sortedHouses.length];
+    
+    const start = currentHouse.cuspDegree;
+    const end = nextHouse.cuspDegree;
+    
+    if (end > start) {
+      if (longitude >= start && longitude < end) {
+        return currentHouse.number;
+      }
+    } else {
+      // Wraps around 360/0
+      if (longitude >= start || longitude < end) {
+        return currentHouse.number;
+      }
+    }
+  }
+  return 1; // Fallback to 1st house
+}
 
 // Benefic vs Malefic house relationships per topic
 export const HOUSE_RULES: Record<TopicEnum, { primary: number; favorable: number[]; unfavorable: number[] }> = {
@@ -195,16 +219,135 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
   const moonSign = chart.rulingPlanets?.moonSign || chart.planets.find(p => p.name === 'Moon' || p.name === 'Chandra')?.sign || 'Aries';
   const queryDate = query.targetDate ? new Date(query.targetDate) : new Date();
   const transitSnapshot = computeLiveTransitSnapshot(moonSign, queryDate);
+
+  // 1. Get active timing (Dasha/Bhukti/Antara) planets
+  const activeTimingLords = Array.from(new Set([
+    currentDasha.mahadasha,
+    currentDasha.antardasha,
+    currentDasha.pratyantardasha
+  ].filter(Boolean) as string[]));
+
+  // 2. Strongest significators of the queried cusp/event
+  const eventSignificators = primarySignificators;
+  const favorableHouses = Array.from(new Set([targetHouse, ...houseRule.favorable])) as number[];
+
+  // 3. Evaluate transit activations for all relevant planets
+  interface TransitActivationDetail {
+    transitPlanet: string;
+    sign: string;
+    connectionType: 'Star Lord' | 'Sub Lord';
+    targetPlanet: string;
+    role: string;
+    alignedHouses: number[];
+    isFast: boolean;
+  }
+
+  const activations: TransitActivationDetail[] = [];
+  let timingLordActivated = false;
+  let significatorActivated = false;
+  let slowTransitSupport = false; // Jupiter / Saturn supportive
+  let fastTransitActivation = false; // Sun, Moon, Mars, Mercury, Venus providing immediate activation
+
+  const planetsToAnalyze: string[] = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
+
+  planetsToAnalyze.forEach((pName) => {
+    const pos = transitSnapshot.positions[pName as any];
+    if (!pos) return;
+
+    // Use strict proportional sub-lord calculations to get star lord and sub lord for transit positions
+    const transitKP = calculateKPSubLord(pos.siderealLongitude);
+
+    // Connections to check
+    const connections = [
+      { type: 'Star Lord' as const, value: transitKP.starLord },
+      { type: 'Sub Lord' as const, value: transitKP.subLord }
+    ];
+
+    connections.forEach((conn) => {
+      const target = conn.value;
+      const isActivePeriodPlanet = activeTimingLords.includes(target);
+      const isEventSignificator = eventSignificators.includes(target);
+
+      if (!isActivePeriodPlanet && !isEventSignificator) {
+        return; // Ignore Venus-like planets that are neither active dasha/bhukti/antara nor event significators
+      }
+
+      // Retrieve what houses target signifies
+      const targetLevels = chart.planetSignificators?.[target] || { level1: [], level2: [], level3: [], level4: [] };
+      const targetHouses = Array.from(new Set([
+        ...targetLevels.level1,
+        ...targetLevels.level2,
+        ...targetLevels.level3,
+        ...targetLevels.level4
+      ])) as number[];
+
+      const aligned = targetHouses.filter(h => favorableHouses.includes(h));
+      if (aligned.length === 0) {
+        return; // Does not signify any favorable/required houses for the queried event
+      }
+
+      const role = isActivePeriodPlanet && isEventSignificator
+        ? 'Active Period Planet & Event Significator'
+        : isActivePeriodPlanet
+          ? 'Active Period Planet'
+          : 'Event Significator';
+
+      const isFast = ['Sun', 'Moon', 'Mars', 'Mercury', 'Venus'].includes(pName);
+      
+      if (isActivePeriodPlanet) timingLordActivated = true;
+      if (isEventSignificator) significatorActivated = true;
+      if (isFast) fastTransitActivation = true;
+      if (pName === 'Jupiter' || pName === 'Saturn') slowTransitSupport = true;
+
+      activations.push({
+        transitPlanet: pName,
+        sign: transitKP.sign,
+        connectionType: conn.type,
+        targetPlanet: target,
+        role,
+        alignedHouses: aligned,
+        isFast
+      });
+    });
+  });
+
+  // Calculate final dynamic transit confirmation state
+  const transitSupported = timingLordActivated || significatorActivated || slowTransitSupport || fastTransitActivation;
+
+  // Build high-precision KP Transit Trigger explanation
+  const relevantSigText = eventSignificators.slice(0, 4).join(', ');
+  const cuspSubLordText = cuspSubLord;
+  const dashaText = currentDasha.mahadasha;
+  const bhuktiText = currentDasha.antardasha;
+
+  let activationsListText = '';
+  if (activations.length > 0) {
+    activationsListText = activations.map(act => {
+      return `• ${act.transitPlanet} (in ${act.sign}) → ${act.connectionType} ${act.targetPlanet} (${act.role}) → signifies favorable houses: [${act.alignedHouses.join(', ')}] (Relevant Activation: YES)`;
+    }).join('\n');
+  } else {
+    activationsListText = '• No relevant transit activations of event significators or timing lords are currently occurring via Star/Sub Lord connections.';
+  }
+
+  const kpTransitExplanation = `Relevant event significators: ${relevantSigText}
+Cusp Sub-Lord: ${cuspSubLordText}
+Current Dasha: ${dashaText} | Current Bhukti: ${bhuktiText}
+
+Transiting planets activating relevant significators:
+${activationsListText}
+
+Transit Assessment:
+${transitSupported 
+  ? 'This provides active transit support for the event. Manifestation still depends on the active Dasha-Bhukti-Antara and the structural promise of the cusp.'
+  : 'Transit trigger currently dormant. Broader slow transit support continues to build background activation.'}`;
+
+  // Build separate, clear Vedic Gochara Cross-Check explanation (Explicitly labeled)
   const transitJupiter = transitSnapshot.positions.Jupiter;
   const transitSaturn = transitSnapshot.positions.Saturn;
-  
   const jupiterClass = transitJupiter?.classification || 'Neutral';
   const saturnClass = transitSaturn?.classification || 'Neutral';
-  
-  // Transit is supportive if Jupiter or Saturn is supportive, or both are neutral
-  const transitSupported = jupiterClass === 'Supportive' || saturnClass === 'Supportive' || (jupiterClass === 'Neutral' && saturnClass === 'Neutral');
-  
-  const transitExplanationText = `Jupiter is transiting ${transitJupiter?.sign || 'N/A'} (House ${transitJupiter?.houseFromMoon || 1} from Moon: ${jupiterClass}) and Saturn is transiting ${transitSaturn?.sign || 'N/A'} (House ${transitSaturn?.houseFromMoon || 1} from Moon: ${saturnClass})`;
+  const transitExplanationText = `Jupiter in ${transitJupiter?.sign || 'N/A'} (House ${transitJupiter?.houseFromMoon || 1} from Moon: ${jupiterClass}) and Saturn in ${transitSaturn?.sign || 'N/A'} (House ${transitSaturn?.houseFromMoon || 1} from Moon: ${saturnClass})`;
+  const vedicGocharaCheck = `Vedic Gochara Cross-Check (from Moon sign ${moonSign}): ${transitExplanationText}.`;
 
   // 5-Factor Confidence Model Calculation.
   // significatorScore now degrades further when top significators are
@@ -356,10 +499,10 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
     },
     {
       stepNumber: 8,
-      title: 'Transit Confirmation',
+      title: 'KP Transit Trigger',
       description: transitSupported
-        ? `Jupiter and Saturn transit positions support event manifestation: ${transitExplanationText}.`
-        : `Transit requires waiting for auspicious planetary angles: ${transitExplanationText}.`,
+        ? `${kpTransitExplanation} [Vedic Cross-Check: ${transitExplanationText}]`
+        : `Transit trigger currently dormant. ${kpTransitExplanation} [Vedic Cross-Check: ${transitExplanationText}]`,
       status: transitSupported ? 'PASSED' : 'WARNING',
       textbookRef: 'KP Reader V, p. 6110'
     }
@@ -415,7 +558,8 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
       cuspSubLordHouses: uniqueSubLordHouses,
       significators: primarySignificators,
       dashaStatus: `${currentDasha.mahadasha} Mahadasha - ${currentDasha.antardasha} Bhukti (Active)${bhuktiRetrograde ? ' [Retrograde]' : ''}`,
-      transitSupport: transitSupported ? `Saturn & Jupiter transits support manifestation with patience: ${transitExplanationText}` : `Transit requires cautious decision-making: ${transitExplanationText}`,
+      transitSupport: kpTransitExplanation,
+      vedicGocharaCheck,
       vedicSupport: vedicAligned === null
         ? 'D-9 data unavailable; Vedic cross-validation not performed for this verdict'
         : vedicAligned

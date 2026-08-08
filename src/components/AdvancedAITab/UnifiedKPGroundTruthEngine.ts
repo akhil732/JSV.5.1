@@ -32,7 +32,7 @@ import { KPVerdictEngine } from '../../lib/kp/kpVerdictEngine';
 import { calculateVimshottariDashaFromMoon } from '../../lib/engines/DashaEngine';
 import { buildFullChartSummary } from '../../lib/engines/QueryConsultationEngine';
 import { TransitEngine } from '../../lib/engines/TransitEngine';
-import { calculateKPSubLord, ZODIAC_SIGNS } from '../../lib/kp/subLordMapper';
+import { calculateKPSubLord, ZODIAC_SIGNS, calculateNavamsaSign } from '../../lib/kp/subLordMapper';
 import { analyzeSignificators, getHouseOccupied } from '../../lib/kp/significatorAnalyzer';
 import { calculatePlacidusCusps } from '../../lib/kp/placidusCalculator';
 import { calculateRulingPlanets } from '../../lib/kp/rulingPlanetsCalculator';
@@ -1067,6 +1067,18 @@ function buildKPChartFromHoroscope(horoscope: any, birthDetails: BirthDetails): 
   const lat = birthDetails.latitude || 28.6139;
   const houses = calculatePlacidusCusps(ascDegree, lat, birthDetails.date || '1996-11-01', birthDetails.time || '12:00');
 
+  // Real retrograde status from the fetched horoscope, not left unset.
+  // This function previously never populated isRetrograde at all, so every
+  // planet appeared "direct" to KPVerdictEngine's retrograde-aware scoring
+  // for every persona routed through the Advanced AI Tab (Quick Astro
+  // Engine, KP Stellar, Classical Parashari, etc.) — the fix applied to
+  // useKPChart.ts / KPQueryView.tsx never reached this fourth, independent
+  // chart-construction path. Rahu/Ketu are mean lunar nodes and are always
+  // retrograde by definition.
+  const realRetrogradeSet = new Set<string>(
+    (horoscope?.horoscope?.planetary_states?.retrograde_planets || []) as string[]
+  );
+
   const planetNames = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
   const planets = planetNames.map((pName) => {
     const deg = planetLongitudes[pName] ?? 180;
@@ -1080,9 +1092,70 @@ function buildKPChartFromHoroscope(horoscope: any, birthDetails: BirthDetails): 
       starLord: subLordChain.starLord,
       subLord: subLordChain.subLord,
       subSubLord: subLordChain.subSubLord,
+      isRetrograde: pName === 'Rahu' || pName === 'Ketu' || realRetrogradeSet.has(pName),
       significatorOf: [getHouseOccupied(deg, houses)]
     };
   });
+
+  // D-9 (Navamsa) extraction — same flexible-key + mathematical-fallback
+  // pattern used in useKPChart.ts / KPQueryView.tsx / KPAnalysisPage.tsx.
+  // Previously this pipeline had NO D-9 wiring at all (the prompt template
+  // even lists "D-9 Navamsha (if computed)" as a TODO under "SUPPLEMENTARY
+  // DATA [TO BE APPENDED BY CALLER IF AVAILABLE]" — it never was), so Step
+  // 7 / the Vedic cross-check inside KPVerdictEngine.generateKPVerdict()
+  // was silently NEUTRAL/unverified for every Advanced AI Tab consultation,
+  // including Quick Astro Engine.
+  const d9 = horoscope?.horoscope?.divisional_charts?.['D-9_navamsa']
+    || horoscope?.horoscope?.divisional_charts?.['D9']
+    || horoscope?.divisional_charts?.['D-9_navamsa']
+    || horoscope?.divisional_charts?.['D9'];
+  const SIGN_LORD_BY_NAME: Record<string, string> = {
+    Aries: 'Mars', Taurus: 'Venus', Gemini: 'Mercury', Cancer: 'Moon',
+    Leo: 'Sun', Virgo: 'Mercury', Libra: 'Venus', Scorpio: 'Mars',
+    Sagittarius: 'Jupiter', Capricorn: 'Saturn', Aquarius: 'Saturn', Pisces: 'Jupiter'
+  };
+  let navamsaPlanets: KPChart['navamsaPlanets'];
+  if (d9) {
+    navamsaPlanets = planetNames
+      .map((pName) => {
+        const item = d9[pName] || d9[pName.toLowerCase()] || d9[pName.toUpperCase()];
+        if (!item || !item.sign) return null;
+        const signLord = SIGN_LORD_BY_NAME[item.sign] || '';
+        return {
+          name: pName,
+          sign: item.sign,
+          degree: typeof item.longitude === 'number' ? item.longitude : 0,
+          formattedDegree: typeof item.longitude === 'number' ? `${Math.floor(item.longitude % 30)}°` : '',
+          signLord,
+          starLord: signLord,
+          subLord: signLord,
+          subSubLord: signLord,
+          significatorOf: []
+        };
+      })
+      .filter((p): p is NonNullable<typeof p> => p !== null);
+  }
+  if (!navamsaPlanets || navamsaPlanets.length === 0) {
+    // Mathematical fallback from real D-1 longitudes when the API/cache
+    // omitted the D-9 chart block, so Step 7 always resolves to a real
+    // PASSED/WARNING instead of perpetually reporting "not verified".
+    navamsaPlanets = planetNames.map((pName) => {
+      const deg = planetLongitudes[pName] ?? 0;
+      const navSign = calculateNavamsaSign(deg);
+      const signLord = SIGN_LORD_BY_NAME[navSign] || '';
+      return {
+        name: pName,
+        sign: navSign,
+        degree: deg % 30,
+        formattedDegree: `${Math.floor(deg % 30)}°`,
+        signLord,
+        starLord: signLord,
+        subLord: signLord,
+        subSubLord: signLord,
+        significatorOf: []
+      };
+    });
+  }
 
   const { houseSignificators, planetSignificators } = analyzeSignificators(planets, houses, false);
   const rulingPlanets = calculateRulingPlanets(undefined, undefined, lat, birthDetails.longitude || 77.2090);
@@ -1104,6 +1177,7 @@ function buildKPChartFromHoroscope(horoscope: any, birthDetails: BirthDetails): 
     planets,
     houses,
     rulingPlanets,
+    navamsaPlanets,
     currentDasha: {
       mahadasha: calculatedDasha.mahadasha,
       antardasha: calculatedDasha.antardasha,
