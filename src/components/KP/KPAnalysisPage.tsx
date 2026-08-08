@@ -7,7 +7,7 @@ import { ADAM_PLANETS_KP as ADAM_PLANETS, calculateKPSubLord, formatDegrees, cal
 import { ADAM_HOUSES_KP, calculatePlacidusCusps } from '../../lib/kp/placidusCalculator';
 import { analyzeSignificators, getHouseOccupied } from '../../lib/kp/significatorAnalyzer';
 import { calculateRulingPlanets } from '../../lib/kp/rulingPlanetsCalculator';
-import { calculateVimshottariDashaFromMoon, CalculatedDashaInfo } from '../../lib/engines/DashaEngine';
+import { calculateVimshottariDashaFromMoon, CalculatedDashaInfo, toKPChartDashaInfo } from '../../lib/engines/DashaEngine';
 import { CuspTable } from './CuspTable';
 import { PlanetSignificatorsTable } from './PlanetSignificatorsTable';
 import { RulingPlanetsWidget } from './RulingPlanetsWidget';
@@ -298,13 +298,7 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
         houses,
         navamsaPlanets,
         rulingPlanets,
-        currentDasha: {
-          mahadasha: calculatedDasha.mahadasha,
-          antardasha: calculatedDasha.antardasha,
-          pratyantardasha: calculatedDasha.pratyantardasha,
-          mahadashaEnd: calculatedDasha.mahadashaEnd,
-          antardashaEnd: calculatedDasha.antardashaEnd
-        },
+        currentDasha: toKPChartDashaInfo(calculatedDasha),
         houseSignificators,
         planetSignificators
       });

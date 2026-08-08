@@ -29,7 +29,7 @@
 import { KPChart, KPQuery, KPVerdict, TopicEnum } from '../../types/kp';
 import { BirthDetails } from '../../types';
 import { KPVerdictEngine } from '../../lib/kp/kpVerdictEngine';
-import { calculateVimshottariDashaFromMoon } from '../../lib/engines/DashaEngine';
+import { calculateVimshottariDashaFromMoon, toKPChartDashaInfo } from '../../lib/engines/DashaEngine';
 import { buildFullChartSummary } from '../../lib/engines/QueryConsultationEngine';
 import { TransitEngine } from '../../lib/engines/TransitEngine';
 import { calculateKPSubLord, ZODIAC_SIGNS, calculateNavamsaSign } from '../../lib/kp/subLordMapper';
@@ -305,8 +305,18 @@ export function computeUnifiedKPGroundTruth(
     ? parseQueryToKPQuery(query)
     : query;
 
-  // 2. Reconstruct or retrieve full KPChart
-  const kpChart = horoscopeData?.kpChart || buildKPChartFromHoroscope(horoscopeData, birthDetails);
+  // 2. Reconstruct or retrieve full KPChart.
+  // A pre-attached horoscopeData.kpChart is only trusted if it's actually
+  // structurally complete (has the full timeline). Nothing in this codebase
+  // currently attaches .kpChart upstream, so this passthrough is dormant
+  // today — but trusting it unconditionally is exactly how the
+  // "fullTimeline missing" bug could resurface via a different route if a
+  // caching layer is added later without knowing this mapping needs to be
+  // complete. Rebuilding from scratch is cheap and always correct.
+  const passedChart = horoscopeData?.kpChart;
+  const kpChart = (passedChart?.currentDasha?.fullTimeline?.length)
+    ? passedChart
+    : buildKPChartFromHoroscope(horoscopeData, birthDetails);
 
   // 3. Call single source of truth: KPVerdictEngine
   const verdict: KPVerdict = KPVerdictEngine.generateKPVerdict(kpQuery, kpChart);
@@ -1198,16 +1208,7 @@ function buildKPChartFromHoroscope(horoscope: any, birthDetails: BirthDetails): 
     houses,
     rulingPlanets,
     navamsaPlanets,
-    currentDasha: {
-      mahadasha: calculatedDasha.mahadasha,
-      antardasha: calculatedDasha.antardasha,
-      pratyantardasha: calculatedDasha.pratyantardasha,
-      mahadashaEnd: calculatedDasha.mahadashaEnd,
-      antardashaEnd: calculatedDasha.antardashaEnd,
-      pratyantardashaStart: calculatedDasha.pratyantardashaStart,
-      pratyantardashaEnd: calculatedDasha.pratyantardashaEnd,
-      fullTimeline: calculatedDasha.timeline
-    },
+    currentDasha: toKPChartDashaInfo(calculatedDasha),
     houseSignificators,
     planetSignificators
   };

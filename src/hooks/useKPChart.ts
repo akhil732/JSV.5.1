@@ -3,7 +3,7 @@ import { KPChart, KPPlanet } from '../types/kp';
 import { calculatePlacidusCusps } from '../lib/kp/placidusCalculator';
 import { analyzeSignificators, getHouseOccupied } from '../lib/kp/significatorAnalyzer';
 import { calculateRulingPlanets } from '../lib/kp/rulingPlanetsCalculator';
-import { calculateVimshottariDashaFromMoon } from '../lib/engines/DashaEngine';
+import { calculateVimshottariDashaFromMoon, toKPChartDashaInfo } from '../lib/engines/DashaEngine';
 import { calculateKPSubLord, formatDegrees, calculateNavamsaSign } from '../lib/kp/subLordMapper';
 
 const SIGN_LORD_BY_NAME: Record<string, string> = {
@@ -141,16 +141,7 @@ export const useKPChart = (person: any, chartData: any): KPChart | null => {
         houses,
         rulingPlanets,
         navamsaPlanets,
-        currentDasha: {
-          mahadasha: calculatedDasha.mahadasha,
-          antardasha: calculatedDasha.antardasha,
-          pratyantardasha: calculatedDasha.pratyantardasha,
-          mahadashaEnd: calculatedDasha.mahadashaEnd,
-          antardashaEnd: calculatedDasha.antardashaEnd,
-          pratyantardashaStart: calculatedDasha.pratyantardashaStart,
-          pratyantardashaEnd: calculatedDasha.pratyantardashaEnd,
-          fullTimeline: calculatedDasha.timeline
-        },
+        currentDasha: toKPChartDashaInfo(calculatedDasha),
         houseSignificators,
         planetSignificators
       };

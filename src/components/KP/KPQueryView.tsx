@@ -8,7 +8,7 @@ import { ADAM_HOUSES_KP, calculatePlacidusCusps } from '../../lib/kp/placidusCal
 import { calculateKPSubLord, formatDegrees, calculateNavamsaSign } from '../../lib/kp/subLordMapper';
 import { analyzeSignificators, getHouseOccupied } from '../../lib/kp/significatorAnalyzer';
 import { calculateRulingPlanets } from '../../lib/kp/rulingPlanetsCalculator';
-import { calculateVimshottariDashaFromMoon } from '../../lib/engines/DashaEngine';
+import { calculateVimshottariDashaFromMoon, toKPChartDashaInfo } from '../../lib/engines/DashaEngine';
 
 // Sign dispositor lookup for D-9 cross-validation (kpVerdictEngine.ts owns
 // the canonical copy of this map for its own use; duplicated here since
@@ -769,20 +769,7 @@ function buildFallbackKPChart(birthDetails?: BirthDetails, horoscopeData?: any):
     planetSignificators,
     rulingPlanets,
     navamsaPlanets,
-    currentDasha: {
-      mahadasha: calculatedDasha.mahadasha,
-      antardasha: calculatedDasha.antardasha,
-      pratyantardasha: calculatedDasha.pratyantardasha,
-      mahadashaEnd: calculatedDasha.mahadashaEnd,
-      antardashaEnd: calculatedDasha.antardashaEnd,
-      pratyantardashaStart: calculatedDasha.pratyantardashaStart,
-      pratyantardashaEnd: calculatedDasha.pratyantardashaEnd,
-      fullTimeline: calculatedDasha.timeline
-      // sookshmadasha removed: this was previously hardcoded to the fixed
-      // string 'Venus' regardless of the actual chart — a fabricated value
-      // with no computation behind it. Omitted rather than faked; add back
-      // once a real Sookshma Dasha calculator exists.
-    }
+    currentDasha: toKPChartDashaInfo(calculatedDasha),
   };
 }
 

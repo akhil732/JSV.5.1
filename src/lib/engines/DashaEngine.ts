@@ -8,6 +8,8 @@ export interface Dasha {
   percentComplete: number;
 }
 
+import { DashaInfo } from '../../types/kp';
+
 export interface DashaData {
   mahadasha: Dasha;
   antardasha: Dasha;
@@ -665,6 +667,33 @@ export function calculateVimshottariDashaFromMoon(
     pratyantardashaEnd: activePd ? formatDateStr(activePd.endDate) : undefined,
     remainingBalanceYears: remainingYears,
     timeline
+  };
+}
+
+export function toKPChartDashaInfo(dasha: CalculatedDashaInfo): DashaInfo {
+  return {
+    mahadasha: dasha.mahadasha,
+    antardasha: dasha.antardasha,
+    pratyantardasha: dasha.pratyantardasha,
+    mahadashaEnd: dasha.mahadashaEnd,
+    antardashaEnd: dasha.antardashaEnd,
+    pratyantardashaStart: dasha.pratyantardashaStart,
+    pratyantardashaEnd: dasha.pratyantardashaEnd,
+    fullTimeline: dasha.timeline.map(md => ({
+      lord: md.lord,
+      startDate: md.startDate,
+      endDate: md.endDate,
+      antardashas: md.antardashas.map(ad => ({
+        lord: ad.lord,
+        startDate: ad.startDate,
+        endDate: ad.endDate,
+        pratyantardashas: ad.pratyantardashas.map(pd => ({
+          lord: pd.lord,
+          startDate: pd.startDate,
+          endDate: pd.endDate
+        }))
+      }))
+    }))
   };
 }
 
