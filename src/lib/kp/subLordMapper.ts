@@ -42,6 +42,27 @@ export const ZODIAC_SIGNS = [
   { name: 'Pisces', lord: 'Jupiter' }
 ];
 
+const SIGN_START_NAVAMSA: Record<number, number> = {
+  0: 0, // Fire (Aries, Leo, Sag) -> starts at Aries (0)
+  1: 9, // Earth (Taurus, Virgo, Cap) -> starts at Capricorn (9)
+  2: 6, // Air (Gemini, Libra, Aqu) -> starts at Libra (6)
+  3: 3  // Water (Cancer, Scorpio, Pis) -> starts at Cancer (3)
+};
+
+/**
+ * Calculates the exact Navamsa (D-9) sign for any absolute longitude (0 - 360 degrees).
+ */
+export function calculateNavamsaSign(longitude: number): string {
+  const normDeg = ((longitude % 360) + 360) % 360;
+  const signIdx = Math.floor(normDeg / 30);
+  const degInSign = normDeg % 30;
+  const navamsaIdx = Math.floor(degInSign / (30 / 9)); // 0..8
+  const elementGroup = signIdx % 4; // 0: Fire, 1: Earth, 2: Air, 3: Water
+  const startSign = SIGN_START_NAVAMSA[elementGroup];
+  const navamsaSignIdx = (startSign + navamsaIdx) % 12;
+  return ZODIAC_SIGNS[navamsaSignIdx].name;
+}
+
 export const NAKSHATRAS = PROPORTIONAL_NAKSHATRAS.map(n => ({
   name: n.name,
   lord: n.starLord

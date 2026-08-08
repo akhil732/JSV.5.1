@@ -3,7 +3,7 @@ import { KPChart, KPPlanet } from '../../types/kp';
 import { SavedPerson } from '../../types/marriageMatch';
 import { BirthDetails } from '../../types';
 import { ProfileStorageService } from '../../lib/profileStorageService';
-import { ADAM_PLANETS_KP as ADAM_PLANETS, calculateKPSubLord, formatDegrees } from '../../lib/kp/subLordMapper';
+import { ADAM_PLANETS_KP as ADAM_PLANETS, calculateKPSubLord, formatDegrees, calculateNavamsaSign } from '../../lib/kp/subLordMapper';
 import { ADAM_HOUSES_KP, calculatePlacidusCusps } from '../../lib/kp/placidusCalculator';
 import { analyzeSignificators, getHouseOccupied } from '../../lib/kp/significatorAnalyzer';
 import { calculateRulingPlanets } from '../../lib/kp/rulingPlanetsCalculator';
@@ -230,6 +230,59 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
 
       setDashaInfo(calculatedDasha);
 
+      // 6. Navamsa Planets (D-9)
+      const d9 = horoscopeData?.horoscope?.divisional_charts?.['D-9_navamsa']
+        || horoscopeData?.horoscope?.divisional_charts?.['D9']
+        || horoscopeData?.divisional_charts?.['D-9_navamsa'];
+      let navamsaPlanets: KPPlanet[] | undefined;
+      if (d9) {
+        const signLordMap: Record<string, string> = {
+          Aries: 'Mars', Taurus: 'Venus', Gemini: 'Mercury', Cancer: 'Moon',
+          Leo: 'Sun', Virgo: 'Mercury', Libra: 'Venus', Scorpio: 'Mars',
+          Sagittarius: 'Jupiter', Capricorn: 'Saturn', Aquarius: 'Saturn', Pisces: 'Jupiter'
+        };
+        navamsaPlanets = planetNames.map((pName) => {
+          const item = d9[pName] || d9[pName.toLowerCase()] || d9[pName.toUpperCase()];
+          if (!item || !item.sign) return null;
+          const sl = signLordMap[item.sign] || '';
+          return {
+            name: pName,
+            sign: item.sign,
+            degree: typeof item.longitude === 'number' ? item.longitude : 0,
+            formattedDegree: typeof item.longitude === 'number' ? formatDegrees(item.longitude) : '',
+            signLord: sl,
+            starLord: sl,
+            subLord: sl,
+            subSubLord: sl,
+            significatorOf: []
+          };
+        }).filter((p): p is KPPlanet => p !== null);
+      }
+
+      if (!navamsaPlanets || navamsaPlanets.length === 0) {
+        const signLordMap: Record<string, string> = {
+          Aries: 'Mars', Taurus: 'Venus', Gemini: 'Mercury', Cancer: 'Moon',
+          Leo: 'Sun', Virgo: 'Mercury', Libra: 'Venus', Scorpio: 'Mars',
+          Sagittarius: 'Jupiter', Capricorn: 'Saturn', Aquarius: 'Saturn', Pisces: 'Jupiter'
+        };
+        navamsaPlanets = planetNames.map((pName) => {
+          const deg = planetLongitudes[pName] ?? 0;
+          const navSign = calculateNavamsaSign(deg);
+          const sl = signLordMap[navSign] || '';
+          return {
+            name: pName,
+            sign: navSign,
+            degree: deg % 30,
+            formattedDegree: formatDegrees(deg % 30),
+            signLord: sl,
+            starLord: sl,
+            subLord: sl,
+            subSubLord: sl,
+            significatorOf: []
+          };
+        });
+      }
+
       setKpChart({
         birthData: {
           name: profile.name,
@@ -243,6 +296,7 @@ export const KPAnalysisPage: React.FC<KPAnalysisPageProps> = ({
         },
         planets,
         houses,
+        navamsaPlanets,
         rulingPlanets,
         currentDasha: {
           mahadasha: calculatedDasha.mahadasha,

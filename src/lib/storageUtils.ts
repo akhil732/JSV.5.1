@@ -91,10 +91,8 @@ export function trimReportForCache(report: PastReport, minimalOnly: boolean = fa
     rasi_dashas: h.rasi_dashas
   };
 
-  if (h.divisional_charts && h.divisional_charts['D-1_rasi']) {
-    trimmedHoroscope.divisional_charts = {
-      'D-1_rasi': h.divisional_charts['D-1_rasi']
-    };
+  if (h.divisional_charts) {
+    trimmedHoroscope.divisional_charts = h.divisional_charts;
   }
 
   if (h.planetary_states?.retrograde_planets) {

@@ -5,10 +5,19 @@ import { KPVerdictEngine } from '../../lib/kp/kpVerdictEngine';
 import { BHAVAS_REFERENCE_TABLE } from '../../lib/kp/houseDomainMapper';
 import { useTheme } from '../../context/ThemeContext';
 import { ADAM_HOUSES_KP, calculatePlacidusCusps } from '../../lib/kp/placidusCalculator';
-import { calculateKPSubLord, formatDegrees } from '../../lib/kp/subLordMapper';
+import { calculateKPSubLord, formatDegrees, calculateNavamsaSign } from '../../lib/kp/subLordMapper';
 import { analyzeSignificators, getHouseOccupied } from '../../lib/kp/significatorAnalyzer';
 import { calculateRulingPlanets } from '../../lib/kp/rulingPlanetsCalculator';
 import { calculateVimshottariDashaFromMoon } from '../../lib/engines/DashaEngine';
+
+// Sign dispositor lookup for D-9 cross-validation (kpVerdictEngine.ts owns
+// the canonical copy of this map for its own use; duplicated here since
+// this file constructs KPChart independently rather than importing it).
+const SIGN_LORD_BY_NAME_D9: Record<string, string> = {
+  Aries: 'Mars', Taurus: 'Venus', Gemini: 'Mercury', Cancer: 'Moon',
+  Leo: 'Sun', Virgo: 'Mercury', Libra: 'Venus', Scorpio: 'Mars',
+  Sagittarius: 'Jupiter', Capricorn: 'Saturn', Aquarius: 'Saturn', Pisces: 'Jupiter'
+};
 
 interface KPQueryViewProps {
   chart?: KPChart;
@@ -584,7 +593,27 @@ function InputBar({ value, onChange, onSend, isLoading, isEmpty, onSelectSuggest
 }
 
 function buildFallbackKPChart(birthDetails?: BirthDetails, horoscopeData?: any): KPChart {
-  const isAdam = !birthDetails || birthDetails.date === '1996-11-11' || (birthDetails.name && (birthDetails.name.toLowerCase().includes('akhil') || birthDetails.name.toLowerCase().includes('adam')));
+  // ═══════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: isAdam was previously inferred by matching the person's
+  // NAME against the substrings "akhil"/"adam", or an exact birth date
+  // match. That meant any real user literally named "Akhil" or "Adam" (or
+  // sharing that birth date) had their ENTIRE real chart silently discarded
+  // on every query — real fetched horoscopeData was ignored at line ~596
+  // (`if (d1 && !isAdam)`), houses were replaced with hardcoded
+  // ADAM_HOUSES_KP, planet longitudes with hardcoded demo values, retrograde
+  // status hardcoded to "only Saturn/Rahu/Ketu", and significators pulled
+  // from the static ADAM_PLANET_SIGNIFICATORS table — regardless of what
+  // was actually fetched from JHora for that person. This is the root cause
+  // of the sparse "only Mercury" significator list and the "Saturn, Rahu,
+  // Ketu retrograde" text seen when testing I. Akhil's real chart: it was
+  // never actually his chart, it was the Adam demo fixture the whole time.
+  //
+  // Fixed: demo mode now requires an EXPLICIT opt-in flag
+  // (`birthDetails.useDemoData === true`), or genuinely missing birth
+  // details (nothing to compute from at all). Name and birth date are no
+  // longer used to infer demo mode.
+  // ═══════════════════════════════════════════════════════════════════════
+  const isAdam = !birthDetails || birthDetails.useDemoData === true;
 
   let moonDegree = 202.1;
   let planetLongitudes: Record<string, number> = {
@@ -612,6 +641,58 @@ function buildFallbackKPChart(birthDetails?: BirthDetails, horoscopeData?: any):
     }
   }
 
+  // D-9 (Navamsa) extraction, mirroring the D-1 pattern above. Only the
+  // sign is meaningful for the Vedic cross-check in kpVerdictEngine.ts
+  // (dispositor-agreement check) — a D-9 position doesn't have its own KP
+  // sub-lord chain in the textbook sense, so we don't fabricate one.
+  const d9 = horoscopeData?.horoscope?.divisional_charts?.['D-9_navamsa']
+    || horoscopeData?.horoscope?.divisional_charts?.['D9']
+    || horoscopeData?.divisional_charts?.['D-9_navamsa']
+    || horoscopeData?.divisional_charts?.['D9'];
+  let navamsaPlanets: KPPlanet[] | undefined;
+  const planetNamesForD9 = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
+  if (d9 && !isAdam) {
+    navamsaPlanets = planetNamesForD9
+      .map((pName) => {
+        const item = d9[pName] || d9[pName.toLowerCase()] || d9[pName.toUpperCase()];
+        if (!item || !item.sign) return null;
+        const signLord = SIGN_LORD_BY_NAME_D9[item.sign] || '';
+        const np: KPPlanet = {
+          name: pName,
+          sign: item.sign,
+          degree: typeof item.longitude === 'number' ? item.longitude : 0,
+          formattedDegree: typeof item.longitude === 'number' ? formatDegrees(item.longitude) : '',
+          signLord,
+          starLord: signLord,
+          subLord: signLord,
+          subSubLord: signLord,
+          significatorOf: []
+        };
+        return np;
+      })
+      .filter((p): p is KPPlanet => p !== null);
+  }
+
+  // Mathematical D-9 fallback from D-1 longitudes if D-9 chart was omitted in API/cache
+  if ((!navamsaPlanets || navamsaPlanets.length === 0) && !isAdam && planetLongitudes) {
+    navamsaPlanets = planetNamesForD9.map((pName) => {
+      const deg = planetLongitudes[pName] ?? 0;
+      const navSign = calculateNavamsaSign(deg);
+      const signLord = SIGN_LORD_BY_NAME_D9[navSign] || '';
+      return {
+        name: pName,
+        sign: navSign,
+        degree: deg % 30,
+        formattedDegree: formatDegrees(deg % 30),
+        signLord,
+        starLord: signLord,
+        subLord: signLord,
+        subSubLord: signLord,
+        significatorOf: []
+      };
+    });
+  }
+
   // Houses computed FIRST so planets below can use real cusp boundaries for
   // house occupancy — previously houses were computed after planets, which
   // forced a hardcoded [1,2,7] fallback on every planet.
@@ -622,6 +703,13 @@ function buildFallbackKPChart(birthDetails?: BirthDetails, horoscopeData?: any):
   const houses = isAdam ? ADAM_HOUSES_KP : calculatePlacidusCusps(ascDegree, lat, dateStr, timeStr);
 
   const planetNames = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
+  // Real retrograde status from JHora's actual planetary_states, not a
+  // hardcoded "only Rahu/Ketu (+Saturn if Adam)" assumption. Rahu/Ketu are
+  // mean lunar nodes and are always retrograde by definition, so they're
+  // always included regardless of what the API returns for them.
+  const realRetrogradeSet = new Set<string>(
+    (horoscopeData?.horoscope?.planetary_states?.retrograde_planets || []) as string[]
+  );
   const planets: KPPlanet[] = planetNames.map((pName) => {
     const deg = planetLongitudes[pName] ?? 180;
     const subLordChain = calculateKPSubLord(deg);
@@ -634,7 +722,9 @@ function buildFallbackKPChart(birthDetails?: BirthDetails, horoscopeData?: any):
       starLord: subLordChain.starLord,
       subLord: subLordChain.subLord,
       subSubLord: subLordChain.subSubLord,
-      isRetrograde: pName === 'Rahu' || pName === 'Ketu' || (isAdam && pName === 'Saturn'),
+      isRetrograde: isAdam
+        ? (pName === 'Rahu' || pName === 'Ketu' || pName === 'Saturn')
+        : (pName === 'Rahu' || pName === 'Ketu' || realRetrogradeSet.has(pName)),
       isCombust: isAdam && (pName === 'Sun' || pName === 'Moon' || pName === 'Mercury'),
       significatorOf: isAdam ? [1, 2, 7] : [getHouseOccupied(deg, houses)]
     };
@@ -661,6 +751,7 @@ function buildFallbackKPChart(birthDetails?: BirthDetails, horoscopeData?: any):
     houseSignificators,
     planetSignificators,
     rulingPlanets,
+    navamsaPlanets,
     currentDasha: {
       mahadasha: calculatedDasha.mahadasha,
       antardasha: calculatedDasha.antardasha,

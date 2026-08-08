@@ -8,6 +8,16 @@ export interface BirthDetails {
   latitude: number;
   longitude: number;
   timezone: number;
+  /**
+   * Explicit opt-in to render the built-in "Adam" demo profile (hardcoded
+   * houses/planets/significators) instead of computing a real chart from
+   * birth data. Previously this was inferred by matching the person's NAME
+   * against the substring "akhil"/"adam" — which meant any real user
+   * literally named Akhil (or Adam) had their actual chart silently
+   * discarded and replaced with fabricated demo data on every query,
+   * regardless of what real horoscope data had been fetched. Default false.
+   */
+  useDemoData?: boolean;
 }
 
 export interface PastReport {
