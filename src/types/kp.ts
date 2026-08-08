@@ -1,4 +1,4 @@
-export type TopicEnum = 'MARRIAGE' | 'CAREER' | 'FINANCE' | 'HEALTH' | 'EDUCATION' | 'CHILDREN' | 'GENERAL';
+export type TopicEnum = 'MARRIAGE' | 'CAREER' | 'FINANCE' | 'HEALTH' | 'EDUCATION' | 'CHILDREN' | 'PROPERTY' | 'LEGAL' | 'TRAVEL' | 'SPIRITUAL' | 'RELATIONSHIPS' | 'GENERAL';
 
 export type VerdictPromise = 'YES' | 'DELAYED' | 'NO';
 export type QualityLevel = 'FAVORABLE' | 'MIXED' | 'CHALLENGING';

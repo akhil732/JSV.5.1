@@ -1004,7 +1004,7 @@ export function buildSystemPrompt(
 function parseQueryToKPQuery(queryText: string): KPQuery {
   const lower = queryText.toLowerCase();
   
-  if (lower.includes('marri') || lower.includes('spous') || lower.includes('relationship') || lower.includes('wedding')) {
+  if (lower.includes('marri') || lower.includes('spous') || lower.includes('wedding')) {
     return { question: queryText, topic: 'MARRIAGE', relevantHouse: 7 };
   }
   if (lower.includes('job') || lower.includes('career') || lower.includes('promot') || lower.includes('profession') || lower.includes('business')) {
@@ -1016,11 +1016,26 @@ function parseQueryToKPQuery(queryText: string): KPQuery {
   if (lower.includes('health') || lower.includes('disease') || lower.includes('cur') || lower.includes('sick')) {
     return { question: queryText, topic: 'HEALTH', relevantHouse: 1 };
   }
-  if (lower.includes('educat') || lower.includes('study') || lower.includes('exam') || lower.includes('degree')) {
+  if (lower.includes('educat') || lower.includes('study') || lower.includes('exam') || lower.includes('degree') || lower.includes('college') || lower.includes('school')) {
     return { question: queryText, topic: 'EDUCATION', relevantHouse: 5 };
   }
   if (lower.includes('child') || lower.includes('kid') || lower.includes('son') || lower.includes('daughter') || lower.includes('pregnancy')) {
     return { question: queryText, topic: 'CHILDREN', relevantHouse: 5 };
+  }
+  if (lower.includes('property') || lower.includes('house') || lower.includes('flat') || lower.includes('land') || lower.includes('buy') || lower.includes('home')) {
+    return { question: queryText, topic: 'PROPERTY', relevantHouse: 4 };
+  }
+  if (lower.includes('court') || lower.includes('legal') || lower.includes('case') || lower.includes('lawyer') || lower.includes('dispute')) {
+    return { question: queryText, topic: 'LEGAL', relevantHouse: 6 };
+  }
+  if (lower.includes('travel') || lower.includes('abroad') || lower.includes('foreign') || lower.includes('visa') || lower.includes('passport') || lower.includes('migrate')) {
+    return { question: queryText, topic: 'TRAVEL', relevantHouse: 12 };
+  }
+  if (lower.includes('spiritual') || lower.includes('religion') || lower.includes('god') || lower.includes('prayer') || lower.includes('meditation') || lower.includes('temple')) {
+    return { question: queryText, topic: 'SPIRITUAL', relevantHouse: 9 };
+  }
+  if (lower.includes('relationship') || lower.includes('friend') || lower.includes('family harmony') || lower.includes('family peace') || lower.includes('peace in my family')) {
+    return { question: queryText, topic: 'RELATIONSHIPS', relevantHouse: 7 };
   }
   
   return { question: queryText, topic: 'GENERAL', relevantHouse: 1 };
@@ -1034,6 +1049,11 @@ function getHouseDomainLabel(topic: TopicEnum): string {
     HEALTH: 'Health & Physical Vitality (House I)',
     EDUCATION: 'Higher Education & Intelligence (House V)',
     CHILDREN: 'Progeny & Children (House V)',
+    PROPERTY: 'Property & Real Estate (House IV)',
+    LEGAL: 'Legal Matters & Disputes (House VI)',
+    TRAVEL: 'Foreign Travel & Migration (House XII)',
+    SPIRITUAL: 'Spiritual Pursuits & Religion (House IX)',
+    RELATIONSHIPS: 'Interpersonal Relationships & Harmony (House VII)',
     GENERAL: 'General Life Path & Well-Being (House I)'
   };
   return labels[topic] || labels.GENERAL;

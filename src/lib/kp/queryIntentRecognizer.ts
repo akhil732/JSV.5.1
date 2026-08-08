@@ -131,9 +131,23 @@ export class KeywordMatcher {
         const matchesExact = queryWord === lowerKeyword;
         const queryStartsWithKeyword = queryWord.startsWith(lowerKeyword);
         const queryIncludesKeyword = queryWord.includes(lowerKeyword);
-        const keywordIncludesQuery = lowerKeyword.length >= 3 && queryWord.length >= 3 && lowerKeyword.includes(queryWord);
+        // REMOVED: a former `keywordIncludesQuery` rule matched whenever a
+        // short (>=3 char) word from the user's query happened to be a
+        // SUBSTRING of a longer keyword (lowerKeyword.includes(queryWord)).
+        // That's an unsafe direction: any common short word that happens to
+        // sit inside some domain's keyword string falsely triggers that
+        // domain, regardless of meaning. Confirmed in production testing:
+        // "Should I do more prayer and meditation for peace?" (a SPIRITUAL
+        // query) was misclassified as FINANCE, because the query word "for"
+        // is a substring of the FINANCE keyword "fortune". The forward
+        // rules above (queryStartsWithKeyword / queryIncludesKeyword —
+        // keyword found inside the user's actual word, e.g. "marriages"
+        // still contains "marriage") already handle legitimate
+        // typo/inflection matching safely; this reverse rule added no safe
+        // matching value and was a source of silent misclassification for
+        // any query containing common short words.
 
-        if (matchesExact || queryStartsWithKeyword || queryIncludesKeyword || keywordIncludesQuery) {
+        if (matchesExact || queryStartsWithKeyword || queryIncludesKeyword) {
           if (!matches.includes(keyword)) {
             matches.push(keyword);
           }

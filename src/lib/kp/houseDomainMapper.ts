@@ -278,7 +278,7 @@ export const DOMAIN_HOUSE_MAPPING: Record<LifeDomain, DomainConfig> = {
     queryPatterns: [
       {
         domain: 'EDUCATION',
-        keywords: ['education', 'studies', 'exam', 'academic', 'university', 'school', 'చదువు', 'విద్య', 'పరీక్ష', 'పాఠశాల', 'కళాశాల', 'విశ్వవిద్యాలయం', 'విద్యాభ్యాసం', 'ర్యాంకు', 'మార్కులు', 'chaduvu', 'vidya', 'pareeksha'],
+        keywords: ['education', 'studies', 'exam', 'academic', 'university', 'school', 'college', 'degree', 'course', 'engineering', 'graduation', 'admission', 'చదువు', 'విద్య', 'పరీక్ష', 'పాఠశాల', 'కళాశాల', 'విశ్వవిద్యాలయం', 'విద్యాభ్యాసం', 'ర్యాంకు', 'మార్కులు', 'chaduvu', 'vidya', 'pareeksha'],
         weightage: 95,
         contextFree: true
       },
@@ -384,7 +384,7 @@ export const DOMAIN_HOUSE_MAPPING: Record<LifeDomain, DomainConfig> = {
     queryPatterns: [
       {
         domain: 'TRAVEL',
-        keywords: ['travel', 'abroad', 'foreign', 'migration', 'migrate', 'movement', 'journey', 'ప్రయాణం', 'విదేశీ', 'విదేశాలకు', 'విదేశం', 'వీసా', 'పాస్‌పోర్ట్', 'వలస', 'యాత్ర', 'prayanam', 'videshi'],
+        keywords: ['travel', 'abroad', 'foreign', 'migration', 'migrate', 'movement', 'journey', 'visa', 'passport', 'relocate', 'relocation', 'ప్రయాణం', 'విదేశీ', 'విదేశాలకు', 'విదేశం', 'వీసా', 'పాస్‌పోర్ట్', 'వలస', 'యాత్ర', 'prayanam', 'videshi'],
         weightage: 95,
         contextFree: true
       },
@@ -406,7 +406,7 @@ export const DOMAIN_HOUSE_MAPPING: Record<LifeDomain, DomainConfig> = {
     queryPatterns: [
       {
         domain: 'SPIRITUAL',
-        keywords: ['spiritual', 'religion', 'faith', 'god', 'prayer', 'meditation', 'ఆధ్యాత్మికం', 'పూజ', 'దేవుడు', 'మంత్రం', 'జపం', 'గురువు', 'భక్తి', 'ధర్మం', 'ఆలయం'],
+        keywords: ['spiritual', 'religion', 'faith', 'god', 'prayer', 'meditation', 'temple', 'worship', 'blessing', 'blessings', 'pilgrimage', 'moksha', 'dharma', 'guru', 'ఆధ్యాత్మికం', 'పూజ', 'దేవుడు', 'మంత్రం', 'జపం', 'గురువు', 'భక్తి', 'ధర్మం', 'ఆలయం'],
         weightage: 95,
         contextFree: true
       }
@@ -426,6 +426,22 @@ export const DOMAIN_HOUSE_MAPPING: Record<LifeDomain, DomainConfig> = {
         weightage: 85,
         contextFree: true,
         excludeKeywords: ['marriage', 'spouse', 'partner', 'వివాహం', 'పెళ్లి']
+      },
+      {
+        // "Family" and "peace in the family" are interpersonal-harmony
+        // queries about relations with family members, not a wealth/2nd-
+        // house question and not specifically about the home/4th house —
+        // they fit RELATIONSHIPS (7th house = relations with others)
+        // better than any other domain currently modeled. Kept as a
+        // separate, lower-weighted pattern (not merged into the primary
+        // pattern above) since "family" alone is a weaker signal than
+        // "relationship"/"friendship" and shouldn't dominate a query that
+        // also contains a stronger domain-specific word.
+        domain: 'RELATIONSHIPS',
+        keywords: ['family harmony', 'family peace', 'peace in my family', 'peace in the family', 'family bond', 'family relations'],
+        weightage: 80,
+        contextFree: true,
+        excludeKeywords: ['marriage', 'spouse', 'partner', 'wealth', 'money', 'finance', 'వివాహం', 'పెళ్లి']
       }
     ]
   }

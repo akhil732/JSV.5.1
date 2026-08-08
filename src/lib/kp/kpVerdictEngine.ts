@@ -4,7 +4,7 @@ import { QueryIntentRecognizer } from './queryIntentRecognizer';
 import { lookupTriplePlanetProfession, getBusinessSuitability } from './professionalSignificators';
 import { computeLiveTransitSnapshot } from '../engines/LiveTransitEngine';
 import { getRankedSignificators } from './significatorAnalyzer';
-import { evaluateCuspPromise, HouseNumber } from './gatekeeperRules';
+import { evaluateCuspPromise, HouseNumber, HOUSE_SIGNIFICATOR_MATRIX } from './gatekeeperRules';
 import { AppError, ErrorCode } from '../errors/AppError';
 import { calculateKPSubLord } from './subLordMapper';
 
@@ -110,6 +110,25 @@ export const HOUSE_RULES: Record<TopicEnum, { primary: number; favorable: number
   HEALTH: { primary: 1, favorable: [1, 5, 11], unfavorable: [6, 8, 12] },
   EDUCATION: { primary: 5, favorable: [4, 5, 9, 11], unfavorable: [3, 8, 12] },
   CHILDREN: { primary: 5, favorable: [2, 5, 11], unfavorable: [1, 4, 10] },
+  // Previously PROPERTY/LEGAL/TRAVEL/SPIRITUAL/RELATIONSHIPS had no
+  // HOUSE_RULES entry at all, even though houseDomainMapper.ts's
+  // DOMAIN_HOUSE_MAPPING already classifies all 11 domains correctly with
+  // real primary/secondary houses. That meant a query like "Will I buy a
+  // house or flat?" was correctly identified as PROPERTY by the keyword
+  // matcher (weightage 90-95, well above the CERTAIN threshold) but then
+  // silently discarded to GENERAL right here, because TopicEnum simply had
+  // no PROPERTY slot to map into. Same root-cause pattern as the earlier
+  // CHILDREN bug, just five domains at once. Favorable/unfavorable houses
+  // below mirror each domain's primaryHouse/secondaryHouses from
+  // houseDomainMapper.ts plus standard classical supportive/malefic house
+  // groupings for that life area (2/11 = gains & support, 6/8/12 = loss,
+  // debt, obstruction — consistent with the pattern used for the six
+  // topics above).
+  PROPERTY: { primary: 4, favorable: [2, 4, 9, 11], unfavorable: [6, 8, 12] },
+  LEGAL: { primary: 6, favorable: [6, 10, 11], unfavorable: [8, 12] },
+  TRAVEL: { primary: 12, favorable: [3, 9, 12], unfavorable: [4, 8] },
+  SPIRITUAL: { primary: 9, favorable: [5, 9, 12], unfavorable: [6, 8] },
+  RELATIONSHIPS: { primary: 7, favorable: [5, 7, 11], unfavorable: [6, 12] },
   GENERAL: { primary: 1, favorable: [1, 2, 3, 5, 9, 10, 11], unfavorable: [6, 8, 12] }
 };
 
@@ -229,7 +248,19 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
 
   // 2. Strongest significators of the queried cusp/event
   const eventSignificators = primarySignificators;
-  const favorableHouses = Array.from(new Set([targetHouse, ...houseRule.favorable])) as number[];
+  // Uses the SAME accurate per-house textbook benefic matrix that Step 3's
+  // gatekeeper evaluation applies (HOUSE_SIGNIFICATOR_MATRIX), rather than
+  // the coarser topic-level houseRule.favorable list. Previously these two
+  // steps used two different house-favorability rule sets, so a transit
+  // could be scored "supportive" by Step 8's looser topic list even when
+  // it wasn't actually touching a house Step 3 considers benefic for this
+  // specific house — an internal inconsistency between two checks that are
+  // supposed to be evaluating the same underlying promise.
+  const houseMatrixEntry = HOUSE_SIGNIFICATOR_MATRIX.find((h) => h.house === targetHouse);
+  const favorableHouses = Array.from(new Set([
+    targetHouse,
+    ...(houseMatrixEntry?.beneficSignifications || houseRule.favorable)
+  ])) as number[];
 
   // 3. Evaluate transit activations for all relevant planets
   interface TransitActivationDetail {
@@ -592,12 +623,20 @@ export class KPVerdictEngine {
     else if (intent.domain === 'HEALTH') topic = 'HEALTH';
     else if (intent.domain === 'EDUCATION') topic = 'EDUCATION';
     else if (intent.domain === 'CHILDREN') topic = 'CHILDREN';
-    // NOTE: LifeDomain also includes PROPERTY / LEGAL / TRAVEL / SPIRITUAL /
-    // RELATIONSHIPS, which have no matching TopicEnum/HOUSE_RULES entry yet
-    // and correctly fall through to GENERAL below — that part is intentional,
-    // not a bug. CHILDREN, however, DOES have a HOUSE_RULES entry (see
-    // above) and was simply missing from this chain, silently downgrading
-    // every "children" query to GENERAL topic/explanation text.
+    else if (intent.domain === 'PROPERTY') topic = 'PROPERTY';
+    else if (intent.domain === 'LEGAL') topic = 'LEGAL';
+    else if (intent.domain === 'TRAVEL') topic = 'TRAVEL';
+    else if (intent.domain === 'SPIRITUAL') topic = 'SPIRITUAL';
+    else if (intent.domain === 'RELATIONSHIPS') topic = 'RELATIONSHIPS';
+    // All 11 LifeDomain values now have a matching TopicEnum/HOUSE_RULES
+    // entry. Previously PROPERTY/LEGAL/TRAVEL/SPIRITUAL/RELATIONSHIPS were
+    // documented here as "intentionally" falling through to GENERAL — that
+    // was wrong: the classifier (houseDomainMapper.ts) already scores these
+    // correctly (e.g. "house"/"flat"/"buy" → PROPERTY at 90-95% confidence,
+    // well above the CERTAIN threshold), so a real "Will I buy a house or
+    // flat?" query was being correctly classified upstream and then
+    // silently discarded to GENERAL right here — the same bug class as the
+    // earlier missing CHILDREN branch, just covering five domains at once.
 
     // 3. Generate base verdict
     const baseVerdict = generateKPVerdict(

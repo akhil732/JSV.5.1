@@ -163,3 +163,30 @@ describe('KPVerdictEngine.generateVerdictWithIntent — CHILDREN domain regressi
     expect(step1.description).not.toMatch(/GENERAL/i);
   });
 });
+
+describe('KPVerdictEngine.generateVerdictWithIntent — PROPERTY/LEGAL/TRAVEL/SPIRITUAL/RELATIONSHIPS domain regression', () => {
+  // Regression test for a real production bug found while testing a live
+  // "Will I buy a house or flat soon?" query: the KEYWORD CLASSIFIER
+  // (houseDomainMapper.ts) already correctly identified PROPERTY at 90-95%
+  // confidence ("house"/"flat"/"buy" are properly weighted keywords), but
+  // TopicEnum/HOUSE_RULES in kpVerdictEngine.ts only implemented 6 of the
+  // 11 domains LifeDomain supports — PROPERTY, LEGAL, TRAVEL, SPIRITUAL,
+  // and RELATIONSHIPS were silently discarded to GENERAL at the mapping
+  // step, even though they were correctly classified upstream.
+  const cases: [string, string][] = [
+    ['Will I buy a house or flat soon?', 'PROPERTY'],
+    ['Will I win this court case?', 'LEGAL'],
+    ['Will I travel abroad this year?', 'TRAVEL'],
+    ['Should I visit a temple for blessings?', 'SPIRITUAL'],
+    ['Will I find good friendships this year?', 'RELATIONSHIPS'],
+  ];
+
+  test.each(cases)('%s → topic %s (not GENERAL)', async (query, expectedTopic) => {
+    const chart = baseChart();
+    const result = await KPVerdictEngine.generateVerdictWithIntent(query, chart);
+    expect(result.intent.domain).toBe(expectedTopic);
+    const step1 = result.analysisSteps.find((s: any) => s.stepNumber === 1);
+    expect(step1.description).toMatch(new RegExp(expectedTopic, 'i'));
+    expect(step1.description).not.toMatch(/\(GENERAL\)/i);
+  });
+});
