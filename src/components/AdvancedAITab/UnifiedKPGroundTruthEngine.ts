@@ -1203,7 +1203,10 @@ function buildKPChartFromHoroscope(horoscope: any, birthDetails: BirthDetails): 
       antardasha: calculatedDasha.antardasha,
       pratyantardasha: calculatedDasha.pratyantardasha,
       mahadashaEnd: calculatedDasha.mahadashaEnd,
-      antardashaEnd: calculatedDasha.antardashaEnd
+      antardashaEnd: calculatedDasha.antardashaEnd,
+      pratyantardashaStart: calculatedDasha.pratyantardashaStart,
+      pratyantardashaEnd: calculatedDasha.pratyantardashaEnd,
+      fullTimeline: calculatedDasha.timeline
     },
     houseSignificators,
     planetSignificators

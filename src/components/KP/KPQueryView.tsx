@@ -45,6 +45,15 @@ export interface VerdictData {
   confidence: number;
   mahadasha: string;
   antardasha: string;
+  /**
+   * Active Pratyantardasha (PD) — a finer timing unit than Antardasha
+   * (Bhukti), narrowing a multi-year Bhukti window down to a period
+   * typically weeks-to-months long. Optional: only present when the
+   * chart's full 120-year Vimshottari timeline was available to compute it.
+   */
+  pratyantardasha?: string;
+  pratyantardashaStart?: string;
+  pratyantardashaEnd?: string;
   timing: string;
   hasHurdles: boolean;
   summary: string;
@@ -392,7 +401,15 @@ function VerdictCard({ verdict, C }: { verdict: VerdictData; C: ReturnType<typeo
           <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
             <span style={{ fontSize: 9, fontWeight: 700, color: C.accent, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 5 }}>Active Dasha</span>
             <p style={{ fontSize: 12, fontWeight: 700, color: C.text, margin: '0 0 2px' }}>{verdict.mahadasha} MD</p>
-            <p style={{ fontSize: 10, color: C.muted, margin: 0 }}>{verdict.antardasha} Antardasha</p>
+            <p style={{ fontSize: 10, color: C.muted, margin: verdict.pratyantardasha ? '0 0 2px' : 0 }}>{verdict.antardasha} Antardasha</p>
+            {verdict.pratyantardasha && (
+              <p style={{ fontSize: 10, color: C.muted, margin: 0 }}>
+                {verdict.pratyantardasha} PD
+                {verdict.pratyantardashaStart && verdict.pratyantardashaEnd && (
+                  <span style={{ opacity: 0.75 }}> ({verdict.pratyantardashaStart}–{verdict.pratyantardashaEnd})</span>
+                )}
+              </p>
+            )}
           </div>
         </div>
 
@@ -756,7 +773,15 @@ function buildFallbackKPChart(birthDetails?: BirthDetails, horoscopeData?: any):
       mahadasha: calculatedDasha.mahadasha,
       antardasha: calculatedDasha.antardasha,
       pratyantardasha: calculatedDasha.pratyantardasha,
-      sookshmadasha: 'Venus'
+      mahadashaEnd: calculatedDasha.mahadashaEnd,
+      antardashaEnd: calculatedDasha.antardashaEnd,
+      pratyantardashaStart: calculatedDasha.pratyantardashaStart,
+      pratyantardashaEnd: calculatedDasha.pratyantardashaEnd,
+      fullTimeline: calculatedDasha.timeline
+      // sookshmadasha removed: this was previously hardcoded to the fixed
+      // string 'Venus' regardless of the actual chart — a fabricated value
+      // with no computation behind it. Omitted rather than faked; add back
+      // once a real Sookshma Dasha calculator exists.
     }
   };
 }
@@ -883,6 +908,9 @@ export const KPQueryView: React.FC<KPQueryViewProps> = ({ chart: propsChart, bir
           confidence: nativeResult.confidence || 82,
           mahadasha: mahadashaStr,
           antardasha: antardashaStr,
+          pratyantardasha: nativeResult.activePratyantardasha,
+          pratyantardashaStart: nativeResult.activePratyantardashaStart,
+          pratyantardashaEnd: nativeResult.activePratyantardashaEnd,
           timing: nativeResult.timing || 'Favorable period during active Dasha',
           hasHurdles,
           summary,

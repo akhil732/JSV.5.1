@@ -146,7 +146,10 @@ export const useKPChart = (person: any, chartData: any): KPChart | null => {
           antardasha: calculatedDasha.antardasha,
           pratyantardasha: calculatedDasha.pratyantardasha,
           mahadashaEnd: calculatedDasha.mahadashaEnd,
-          antardashaEnd: calculatedDasha.antardashaEnd
+          antardashaEnd: calculatedDasha.antardashaEnd,
+          pratyantardashaStart: calculatedDasha.pratyantardashaStart,
+          pratyantardashaEnd: calculatedDasha.pratyantardashaEnd,
+          fullTimeline: calculatedDasha.timeline
         },
         houseSignificators,
         planetSignificators

@@ -146,6 +146,57 @@ describe('generateKPVerdict — significator ranking is strength-ordered, not ar
   });
 });
 
+describe('generateKPVerdict — Pratyantardasha (PD) timing replaces hardcoded placeholder dates', () => {
+  test('with no fullTimeline supplied, timing falls back honestly and flags reduced precision (no fabricated "2027" dates)', () => {
+    const chart = baseChart(); // currentDasha has no fullTimeline
+    const verdict = generateKPVerdict({ question: 'q', topic: 'MARRIAGE', relevantHouse: 7 }, chart);
+    expect(verdict.dataQualityWarnings?.some((w) => w.includes('120-year Vimshottari timeline'))).toBe(true);
+    // Previously this string was hardcoded regardless of chart data —
+    // confirm the old fake placeholder text is gone.
+    expect(verdict.timing).not.toMatch(/2027 - 2028/);
+    expect(verdict.alternativeScenarios?.[0].timing).not.toMatch(/2026 - 2027/);
+    expect(verdict.alternativeScenarios?.[1].timing).not.toMatch(/2027 - 2028/);
+  });
+
+  test('with a full 120-year timeline, "Favorable Window" surfaces the real PD lord and exact dates, not a Bhukti-only guess', () => {
+    const chart = baseChart();
+    // AD Venus (currently active per baseChart's currentDasha) contains
+    // three PDs: Mars (not a significator) runs first, then Jupiter (IS a
+    // level1 significator of House 7 per the fixture), then Saturn.
+    // findNextFavorablePD should skip Mars and pick Jupiter's PD — the
+    // earliest upcoming PD whose lord is an actual significator, not just
+    // the earliest PD chronologically.
+    chart.currentDasha.fullTimeline = [
+      {
+        lord: 'Jupiter',
+        startDate: new Date('2015-01-01'),
+        endDate: new Date('2031-01-01'),
+        antardashas: [
+          {
+            lord: 'Venus',
+            startDate: new Date('2020-01-01'),
+            endDate: new Date('2040-01-01'),
+            pratyantardashas: [
+              { lord: 'Mars', startDate: new Date('2024-01-01'), endDate: new Date('2024-06-01') },
+              { lord: 'Jupiter', startDate: new Date('2024-06-01'), endDate: new Date('2025-01-01') },
+              { lord: 'Saturn', startDate: new Date('2025-01-01'), endDate: new Date('2025-06-01') }
+            ]
+          }
+        ]
+      }
+    ];
+
+    const verdict = generateKPVerdict({ question: 'q', topic: 'MARRIAGE', relevantHouse: 7 }, chart);
+    expect(verdict.dataQualityWarnings?.some((w) => w.includes('120-year Vimshottari timeline'))).toBe(false);
+    // The chosen PD (Jupiter's, a real significator) should be named and
+    // dated in the timing text — not the old hardcoded placeholder.
+    const combinedTimingText = JSON.stringify([verdict.timing, verdict.alternativeScenarios]);
+    expect(combinedTimingText).not.toMatch(/2026 - 2027|2027 - 2028/);
+    expect(combinedTimingText).toMatch(/Jupiter/);
+    expect(combinedTimingText).toMatch(/Pratyantardasha|PD/);
+  });
+});
+
 describe('KPVerdictEngine.generateVerdictWithIntent — CHILDREN domain regression', () => {
   test('a CHILDREN-domain intent must resolve to topic CHILDREN, not silently fall back to GENERAL', async () => {
     // Regression test for a real production bug: the domain->topic mapping

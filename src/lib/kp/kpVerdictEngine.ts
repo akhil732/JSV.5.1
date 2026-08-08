@@ -10,6 +10,71 @@ import { calculateKPSubLord } from './subLordMapper';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
+ * findNextFavorablePD — real Pratyantardasha-level timing from the full
+ * 120-year Vimshottari sequence
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * Previously, "Favorable Window" (and the two Alternative Scenarios) were
+ * hardcoded placeholder strings — "During next favorable Bhukti transition
+ * (2027 - 2028)" — with no computation behind the dates at all, regardless
+ * of the actual chart. Pratyantardasha (PD) is a finer timing unit than
+ * Antardasha (Bhukti): a multi-year Bhukti window narrows down to a PD
+ * period typically weeks-to-months long, giving a much more precise
+ * "when" for an event than "sometime during this ~2-3 year Bhukti."
+ *
+ * This walks the chart's full nested MD -> AD -> PD timeline (already
+ * computed by calculateVimshottariDashaFromMoon, previously discarded
+ * before reaching KPChart) starting from `fromDate`, and returns the
+ * earliest upcoming PD period whose lord is one of the house's real ranked
+ * significators — i.e. an actual KP-supportable timing window, not a
+ * guessed date range. Returns null (not a fabricated fallback) when no
+ * timeline is available or no favorable PD is found within the sequence,
+ * so callers can fall back to a clearly-labeled lower-precision message
+ * instead of a fake date.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
+interface FavorablePDWindow {
+  pdLord: string;
+  adLord: string;
+  mdLord: string;
+  startDate: Date;
+  endDate: Date;
+}
+
+function findNextFavorablePD(
+  fullTimeline: NonNullable<KPChart['currentDasha']['fullTimeline']> | undefined,
+  fromDate: Date,
+  favorableLords: string[]
+): FavorablePDWindow | null {
+  if (!fullTimeline || fullTimeline.length === 0) return null;
+
+  const candidates: FavorablePDWindow[] = [];
+  for (const md of fullTimeline) {
+    for (const ad of md.antardashas || []) {
+      for (const pd of ad.pratyantardashas || []) {
+        if (!pd.endDate || pd.endDate < fromDate) continue; // skip fully-elapsed PDs
+        candidates.push({ pdLord: pd.lord, adLord: ad.lord, mdLord: md.lord, startDate: pd.startDate, endDate: pd.endDate });
+      }
+    }
+  }
+  candidates.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+
+  // Prefer the earliest upcoming PD whose own lord is a real significator
+  // for this house — the most precise, KP-textbook-supportable timing.
+  const favorable = candidates.find((c) => favorableLords.includes(c.pdLord));
+  if (favorable) return favorable;
+
+  // No PD lord within the available timeline matches a significator —
+  // don't fabricate one. Caller decides how to present this honestly.
+  return null;
+}
+
+function formatShortDate(d: Date | undefined): string {
+  if (!d || isNaN(d.getTime())) return 'date unavailable';
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
  * validateChartForVerdict — replaces silent fallback corruption with visible warnings
  * ═══════════════════════════════════════════════════════════════════════════════
  * Previously, missing chart data was papered over with hardcoded fallbacks
@@ -68,6 +133,10 @@ function validateChartForVerdict(chart: KPChart, targetHouse: number): string[] 
 
   if (!chart.navamsaPlanets || chart.navamsaPlanets.length === 0) {
     warnings.push('No D-9 (Navamsa) data supplied; Step 7 Vedic cross-validation is skipped rather than assumed true.');
+  }
+
+  if (!chart.currentDasha?.fullTimeline || chart.currentDasha.fullTimeline.length === 0) {
+    warnings.push('No full 120-year Vimshottari timeline supplied; "Favorable Window" timing falls back to a less precise Bhukti-level estimate instead of a real Pratyantardasha-level date range.');
   }
 
   return warnings;
@@ -192,6 +261,18 @@ export function generateKPVerdict(query: KPQuery, chart: KPChart): KPVerdict {
     : (chart.houseSignificators?.[targetHouse] || []);
   const topSignificators = rankedSignificators.slice(0, 2);
   const retrogradeTopSignificators = topSignificators.filter((s) => s.isRetrograde).map((s) => s.planet);
+
+  // Real PD-level timing, computed from the chart's full 120-year
+  // Vimshottari timeline (previously hardcoded placeholder date ranges
+  // regardless of the actual chart, both in Alternative Scenarios and in
+  // the "Favorable Window" text below). Pratyantardasha narrows the
+  // multi-year Bhukti window down to a period typically weeks-to-months
+  // long — a materially more precise "when" for the event. Computed early
+  // so both Alternative Scenarios and the main timing string can share it.
+  const nowForTiming = new Date();
+  const nextFavorablePD = findNextFavorablePD(chart.currentDasha.fullTimeline, nowForTiming, primarySignificators);
+  const hasTimelineData = !!chart.currentDasha.fullTimeline && chart.currentDasha.fullTimeline.length > 0;
+  const hasCurrentPD = !!chart.currentDasha.pratyantardasha && !!chart.currentDasha.pratyantardashaStart && !!chart.currentDasha.pratyantardashaEnd;
 
   // STEP 5: Check Significators' Sub Lords, now also penalizing retrograde
   // top-level (Level 1/2) significators. Retrogression doesn't remove
@@ -451,18 +532,42 @@ ${transitSupported
     obstacles.push(`Cusp sub lord ${cuspSubLord} is benefic per house-level classification but doesn't overlap with the ${topic} topic's typical favorable houses [${houseRule.favorable.join(', ')}]; verify this house selection matches the querent's actual question`);
   }
 
-  // Construct Alternative Scenarios
+  // Alternative Scenarios — previously hardcoded fake date ranges
+  // ("2026 - 2027", "2027 - 2028") regardless of the actual chart. Now
+  // sourced from the same real PD-level timeline scan used for the main
+  // "Favorable Window" text above, so both reflect genuine computed dates
+  // (or honestly say precise timing isn't available) instead of guesses.
+  const secondaryFavorablePD = hasTimelineData
+    ? findNextFavorablePD(
+        chart.currentDasha.fullTimeline,
+        nextFavorablePD ? new Date(nextFavorablePD.endDate.getTime() + 24 * 60 * 60 * 1000) : nowForTiming,
+        primarySignificators
+      )
+    : null;
+
   const alternativeScenarios = [
     {
       title: 'Primary Optimal Window (Most Likely)',
-      description: `Manifestation during ${activeBhukti === 'Jupiter' || activeBhukti === 'Venus' ? activeBhukti : 'Jupiter'} Bhukti trigger under ${currentDasha.mahadasha} Mahadasha`,
-      timing: `${activeBhukti} Bhukti (${currentDasha.antardashaEnd || '2026 - 2027'})`,
+      description: hasCurrentPD
+        ? `Manifestation during the current ${currentDasha.pratyantardasha} Pratyantardasha under ${currentDasha.antardasha} Antardasha / ${currentDasha.mahadasha} Mahadasha`
+        : nextFavorablePD
+          ? `Manifestation during ${nextFavorablePD.pdLord} Pratyantardasha under ${nextFavorablePD.adLord} Antardasha / ${nextFavorablePD.mdLord} Mahadasha`
+          : `Manifestation during ${activeBhukti} Bhukti under ${currentDasha.mahadasha} Mahadasha`,
+      timing: hasCurrentPD
+        ? `${currentDasha.pratyantardasha} PD (${currentDasha.pratyantardashaStart} – ${currentDasha.pratyantardashaEnd})`
+        : nextFavorablePD
+          ? `${nextFavorablePD.pdLord} PD (${formatShortDate(nextFavorablePD.startDate)} – ${formatShortDate(nextFavorablePD.endDate)})`
+          : `${activeBhukti} Bhukti (${currentDasha.antardashaEnd || 'end date unavailable'})`,
       probability: `${confidenceScore}%`
     },
     {
       title: 'Secondary Alternative Window (If Delayed)',
-      description: `If sub-lord obstacles cause postponement, event completes during subsequent supportive Bhukti transition`,
-      timing: `Next Bhukti Transition (2027 - 2028)`,
+      description: secondaryFavorablePD
+        ? `If sub-lord obstacles cause postponement, event completes during the subsequent supportive ${secondaryFavorablePD.pdLord} Pratyantardasha`
+        : `If sub-lord obstacles cause postponement, event completes during a subsequent supportive Pratyantardasha once the timeline advances`,
+      timing: secondaryFavorablePD
+        ? `${secondaryFavorablePD.pdLord} PD (${formatShortDate(secondaryFavorablePD.startDate)} – ${formatShortDate(secondaryFavorablePD.endDate)})`
+        : `Precise date unavailable — no further favorable Pratyantardasha found in the computed timeline`,
       probability: `${Math.max(20, 100 - confidenceScore)}%`
     }
   ];
@@ -513,7 +618,7 @@ ${transitSupported
     {
       stepNumber: 6,
       title: 'Active Dasha Trigger Check',
-      description: `Active Mahadasha: ${currentDasha.mahadasha}, Antardasha (Bhukti): ${currentDasha.antardasha}. ${isBhuktiSignificator ? 'Bhukti lord is a direct significator.' : 'Bhukti lord requires sub-support.'}`,
+      description: `Active Mahadasha: ${currentDasha.mahadasha}, Antardasha (Bhukti): ${currentDasha.antardasha}${hasCurrentPD ? `, Pratyantardasha: ${currentDasha.pratyantardasha} (${currentDasha.pratyantardashaStart}–${currentDasha.pratyantardashaEnd})` : ''}. ${isBhuktiSignificator ? 'Bhukti lord is a direct significator.' : 'Bhukti lord requires sub-support.'}${hasCurrentPD && currentDasha.pratyantardasha ? (primarySignificators.includes(currentDasha.pratyantardasha) ? ' Current Pratyantardasha lord is also a significator, sharpening the timing.' : ' Current Pratyantardasha lord is not itself a significator — see Favorable Window for the next PD that is.') : ''}`,
       status: isBhuktiSignificator ? 'PASSED' : 'WARNING',
       textbookRef: 'KP Reader II, p. 1375'
     },
@@ -539,11 +644,23 @@ ${transitSupported
     }
   ];
 
+  // Real PD-level timing, computed from the chart's full 120-year
+  // Vimshottari timeline (previously hardcoded placeholder date ranges
+  // regardless of the actual chart). Pratyantardasha narrows the multi-
+  // year Bhukti window down to a period typically weeks-to-months long —
+  // a materially more precise "when" for the event.
+
   let timingStr = '';
   if (promise === 'YES') {
-    timingStr = `${currentDasha.antardasha} Bhukti (Active now until ${currentDasha.antardashaEnd || 'late 2028'})`;
+    timingStr = hasCurrentPD
+      ? `${currentDasha.pratyantardasha} Pratyantardasha (${currentDasha.pratyantardashaStart} to ${currentDasha.pratyantardashaEnd}) under ${currentDasha.antardasha} Antardasha / ${currentDasha.mahadasha} Mahadasha`
+      : `${currentDasha.antardasha} Bhukti (Active now until ${currentDasha.antardashaEnd || 'end of current period'})${hasTimelineData ? '' : ' — precise Pratyantardasha timing unavailable, full dasha timeline not supplied'}`;
   } else if (promise === 'DELAYED') {
-    timingStr = `During next favorable Bhukti transition (2027 - 2028) under ${currentDasha.mahadasha} Mahadasha`;
+    timingStr = nextFavorablePD
+      ? `${nextFavorablePD.pdLord} Pratyantardasha (${formatShortDate(nextFavorablePD.startDate)} to ${formatShortDate(nextFavorablePD.endDate)}) under ${nextFavorablePD.adLord} Antardasha / ${nextFavorablePD.mdLord} Mahadasha`
+      : hasTimelineData
+        ? `No Pratyantardasha within the computed timeline has a lord among House ${targetHouse}'s significators; timing remains structurally delayed under ${currentDasha.mahadasha} Mahadasha`
+        : `During a future favorable Bhukti/Pratyantardasha transition under ${currentDasha.mahadasha} Mahadasha — precise dates unavailable, full dasha timeline not supplied`;
   } else {
     timingStr = 'Unfavorable planetary combination in current cycle; significant effort required';
   }
@@ -551,20 +668,29 @@ ${transitSupported
   let explanation = '';
   if (topic === 'MARRIAGE') {
     if (promise === 'YES') {
-      explanation = `${cuspSubLord}, as sub lord of House VII, rules beneficial houses (7, 11, 2) without malefic interference. Marriage promise is strongly granted during the current ${currentDasha.antardasha} Bhukti.`;
+      explanation = hasCurrentPD
+        ? `${cuspSubLord}, as sub lord of House VII, rules beneficial houses (7, 11, 2) without malefic interference. Marriage promise is strongly granted during the current ${currentDasha.pratyantardasha} Pratyantardasha (${currentDasha.pratyantardashaStart}–${currentDasha.pratyantardashaEnd}).`
+        : `${cuspSubLord}, as sub lord of House VII, rules beneficial houses (7, 11, 2) without malefic interference. Marriage promise is strongly granted during the current ${currentDasha.antardasha} Bhukti.`;
     } else if (promise === 'DELAYED') {
-      explanation = `Sub lord ${cuspSubLord} rules House VII and signifies 7 and 11, confirming the promise of marriage. However, malefic involvement introduces temporary delays, pointing to completion during 2027-2028.`;
+      explanation = nextFavorablePD
+        ? `Sub lord ${cuspSubLord} rules House VII and signifies 7 and 11, confirming the promise of marriage. However, malefic involvement introduces temporary delays, pointing to completion during ${nextFavorablePD.pdLord} Pratyantardasha (${formatShortDate(nextFavorablePD.startDate)}–${formatShortDate(nextFavorablePD.endDate)}).`
+        : `Sub lord ${cuspSubLord} rules House VII and signifies 7 and 11, confirming the promise of marriage. However, malefic involvement introduces temporary delays; no confirmed favorable Pratyantardasha found in the available timeline.`;
     } else {
       explanation = `House VII cusp sub lord connects predominantly with unfavorable houses (6, 8, 12), creating strict obstacles for marriage timing in this period.`;
     }
   } else if (topic === 'CAREER') {
     if (promise === 'YES' || promise === 'DELAYED') {
-      explanation = `House X cusp sub lord ${cuspSubLord} connects to Houses 10 and 11. Career progression and opportunities are assured, with timing activating in late 2026 / early 2027.`;
+      const careerTiming = promise === 'YES' && hasCurrentPD
+        ? `activating now during ${currentDasha.pratyantardasha} Pratyantardasha`
+        : nextFavorablePD
+          ? `activating during ${nextFavorablePD.pdLord} Pratyantardasha (${formatShortDate(nextFavorablePD.startDate)}–${formatShortDate(nextFavorablePD.endDate)})`
+          : `timing to be confirmed once a supportive Pratyantardasha is identified`;
+      explanation = `House X cusp sub lord ${cuspSubLord} connects to Houses 10 and 11. Career progression and opportunities are assured, ${careerTiming}.`;
     } else {
       explanation = `House X cusp sub lord indicates temporary obstacles or restructurings; focus on skill consolidation before major career transitions.`;
     }
   } else {
-    explanation = `House ${targetHouse} cusp sub lord ${cuspSubLord} promises ${promise.toLowerCase()} for ${topic.toLowerCase()}. Active Dasha is ${currentDasha.mahadasha}-${currentDasha.antardasha}.`;
+    explanation = `House ${targetHouse} cusp sub lord ${cuspSubLord} promises ${promise.toLowerCase()} for ${topic.toLowerCase()}. Active Dasha is ${currentDasha.mahadasha}-${currentDasha.antardasha}${hasCurrentPD ? `-${currentDasha.pratyantardasha}` : ''}.`;
   }
 
   return {
@@ -588,7 +714,7 @@ ${transitSupported
       cuspSubLord,
       cuspSubLordHouses: uniqueSubLordHouses,
       significators: primarySignificators,
-      dashaStatus: `${currentDasha.mahadasha} Mahadasha - ${currentDasha.antardasha} Bhukti (Active)${bhuktiRetrograde ? ' [Retrograde]' : ''}`,
+      dashaStatus: `${currentDasha.mahadasha} Mahadasha - ${currentDasha.antardasha} Bhukti${hasCurrentPD ? ` - ${currentDasha.pratyantardasha} Pratyantardasha (${currentDasha.pratyantardashaStart}–${currentDasha.pratyantardashaEnd})` : ''} (Active)${bhuktiRetrograde ? ' [Retrograde]' : ''}`,
       transitSupport: kpTransitExplanation,
       vedicGocharaCheck,
       vedicSupport: vedicAligned === null
@@ -685,6 +811,9 @@ export class KPVerdictEngine {
       professionalSignificators: significatorsList,
       activeMaxadasha: chart.currentDasha?.mahadasha || 'Mercury',
       activeBhukti: chart.currentDasha?.antardasha || 'Venus',
+      activePratyantardasha: chart.currentDasha?.pratyantardasha,
+      activePratyantardashaStart: chart.currentDasha?.pratyantardashaStart,
+      activePratyantardashaEnd: chart.currentDasha?.pratyantardashaEnd,
       timing: baseVerdict.timing,
       analysisSteps: baseVerdict.steps,
       confidence: baseVerdict.confidenceScore,

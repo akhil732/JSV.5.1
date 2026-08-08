@@ -63,6 +63,35 @@ export interface DashaInfo {
   sookshmadasha?: string;
   mahadashaEnd?: string;
   antardashaEnd?: string;
+  /**
+   * Exact start/end dates of the currently active Pratyantardasha (PD).
+   * PD is a finer-grained timing unit than Antardasha (Bhukti) — narrowing
+   * a multi-year Bhukti window down to a period typically weeks-to-months
+   * long. Previously computed by calculateVimshottariDashaFromMoon() but
+   * discarded before reaching KPChart, forcing the verdict engine to show
+   * a hardcoded placeholder window ("2027 - 2028") instead of a real date.
+   */
+  pratyantardashaStart?: string;
+  pratyantardashaEnd?: string;
+  /**
+   * The full 120-year Vimshottari Mahadasha sequence, nested down to PD
+   * level (MD -> AD -> PD), as already computed by
+   * calculateVimshottariDashaFromMoon()'s `timeline` field. Optional —
+   * when absent, the verdict engine falls back to the less precise
+   * Bhukti-level timing text and flags reduced precision via
+   * dataQualityWarnings rather than fabricating dates.
+   */
+  fullTimeline?: {
+    lord: string;
+    startDate: Date;
+    endDate: Date;
+    antardashas: {
+      lord: string;
+      startDate: Date;
+      endDate: Date;
+      pratyantardashas: { lord: string; startDate: Date; endDate: Date }[];
+    }[];
+  }[];
 }
 
 export interface RulingPlanets {

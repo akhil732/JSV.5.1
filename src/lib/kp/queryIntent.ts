@@ -103,6 +103,15 @@ export interface QueryAnalysisResult {
   professionalSignificators: any[]; // Supports both old string[] and new ProfessionalSignificator[]
   activeMaxadasha: string;
   activeBhukti: string;
+  /**
+   * Active Pratyantardasha (PD) lord and exact date range, when the chart's
+   * full 120-year timeline was available to compute it. PD is a finer
+   * timing unit than Bhukti — narrows a multi-year Antardasha window down
+   * to a period typically weeks-to-months long.
+   */
+  activePratyantardasha?: string;
+  activePratyantardashaStart?: string;
+  activePratyantardashaEnd?: string;
   timing: any; // Can be string or structured timing object
   analysisSteps: any[];  // Steps can be KPVerdictStep[] or string[]
   confidence: number;       // Overall confidence (0-100)
