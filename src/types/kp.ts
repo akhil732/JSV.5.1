@@ -195,6 +195,34 @@ export interface KPVerdict {
    * verdicts instead of presenting them with false confidence.
    */
   dataQualityWarnings?: string[];
+  /**
+   * Ruling Planets (RP) synthesis — the KP "micro-timing" cross-check.
+   * While the Verdict's Dasha/Bhukti/Pratyantardasha analysis establishes
+   * the macro promise (what the chart allows and roughly when), Ruling
+   * Planets represent the live planetary signature of the exact moment the
+   * question is asked (Lagna sign/star/sub lords, Moon sign/star/sub
+   * lords, Day Lord). When the planets ruling THIS moment overlap with the
+   * house's significators or the active Dasha lords, that convergence is
+   * the traditional KP signal that the moment itself is "ripe" — not just
+   * that the chart structurally allows the event eventually.
+   */
+  rulingPlanetConfirmation?: {
+    rulingPlanets: RulingPlanets;
+    /** Planets appearing in both the RP list and (significators or active dasha lords), most-important first. */
+    overlappingPlanets: string[];
+    /** Whether the traditionally most-weighted RP layers (Lagna Sub Lord, Lagna Star Lord, Moon Star Lord) are among the overlaps. */
+    topTierMatch: boolean;
+    convergenceLevel: 'HIGH' | 'MODERATE' | 'LOW';
+    synthesis: string;
+  };
+  /**
+   * A short, plain-English summary of the verdict for a non-technical
+   * reader, synthesizing promise + timing + RP confirmation into 2-4
+   * sentences without KP jargon (house numbers, sub-lord chains, textbook
+   * refs). The full technical `steps`/`reasoning` remain available for
+   * anyone who wants to see the underlying working.
+   */
+  plainSummary?: string;
 }
 
 export interface DomainPrediction {

@@ -59,6 +59,25 @@ export interface VerdictData {
   summary: string;
   hurdlesNote: string;
   checkpoints: VerdictCheckpoint[];
+  /**
+   * Ruling Planets (RP) micro-timing cross-check, when the engine could
+   * compute one. Rendered as its own card alongside Active Dasha.
+   */
+  rulingPlanetConfirmation?: {
+    rulingPlanets: {
+      lagnaSignLord: string;
+      lagnaStarLord: string;
+      lagnaSubLord: string;
+      moonSignLord: string;
+      moonStarLord: string;
+      moonSubLord: string;
+      dayLord: string;
+    };
+    overlappingPlanets: string[];
+    topTierMatch: boolean;
+    convergenceLevel: 'HIGH' | 'MODERATE' | 'LOW';
+    synthesis: string;
+  };
 }
 
 export interface ChatMessage {
@@ -412,6 +431,39 @@ function VerdictCard({ verdict, C }: { verdict: VerdictData; C: ReturnType<typeo
             )}
           </div>
         </div>
+
+        {/* Ruling Planets — micro-timing cross-check card */}
+        {verdict.rulingPlanetConfirmation && (() => {
+          const rpc = verdict.rulingPlanetConfirmation;
+          const RP_LEVEL_CONFIG = {
+            HIGH: { text: C.emeraldText, bg: C.emeraldBg, border: C.emeraldBorder, label: 'Strong Convergence' },
+            MODERATE: { text: C.amberText, bg: C.amberBg, border: C.amberBorder, label: 'Partial Convergence' },
+            LOW: { text: C.skyText, bg: C.skyBg, border: C.skyBorder, label: 'No Convergence' },
+          };
+          const rc = RP_LEVEL_CONFIG[rpc.convergenceLevel];
+          return (
+            <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: C.accent, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Ruling Planets · Right Now</span>
+                <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4, color: rc.text, background: rc.bg, border: `1px solid ${rc.border}` }}>
+                  {rc.label}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+                {[
+                  { label: 'Lagna', value: `${rpc.rulingPlanets.lagnaSignLord} / ${rpc.rulingPlanets.lagnaStarLord} / ${rpc.rulingPlanets.lagnaSubLord}` },
+                  { label: 'Moon', value: `${rpc.rulingPlanets.moonSignLord} / ${rpc.rulingPlanets.moonStarLord} / ${rpc.rulingPlanets.moonSubLord}` },
+                  { label: 'Day', value: rpc.rulingPlanets.dayLord },
+                ].map(({ label, value }) => (
+                  <span key={label} style={{ fontSize: 9, padding: '3px 8px', borderRadius: 6, background: C.surface, border: `1px solid ${C.border}`, color: C.muted, lineHeight: 1.3 }}>
+                    <span style={{ color: C.accent, fontWeight: 600 }}>{label}: </span>{value}
+                  </span>
+                ))}
+              </div>
+              <p style={{ fontSize: 11, color: C.body, lineHeight: 1.6, margin: 0 }}>{rpc.synthesis}</p>
+            </div>
+          );
+        })()}
 
         {/* Technical chips — house lord, karakas, supporting */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -839,8 +891,15 @@ export const KPQueryView: React.FC<KPQueryViewProps> = ({ chart: propsChart, bir
         const mahadashaStr = nativeResult.activeMaxadasha || activeMahadasha;
         const antardashaStr = nativeResult.activeBhukti || activeAntardasha;
 
-        // Formulate plain English summary
-        const summary = nativeResult.gatekeeperVerdict.reasoning ||
+        // Lead summary — prefer the engine's jargon-free plainSummary
+        // (promise + PD timing + Ruling Planet convergence synthesized in
+        // plain English) over the older technical fallback, which read
+        // like "House 4 cusp sub lord Mars promises delayed for property"
+        // — accurate, but not what a non-technical reader wants to see
+        // first. The full technical reasoning remains one tap away in the
+        // collapsed "Vedic reasoning" checkpoints below.
+        const summary = nativeResult.plainSummary ||
+          nativeResult.gatekeeperVerdict.reasoning ||
           `House ${targetHouse} (${bhavaInfo?.sanskritName || 'Bhava'}) cusp sub-lord ${nativeResult.houseCuspSubLord} indicates a ${nativeResult.gatekeeperVerdict.status.toLowerCase()} outcome for ${nativeResult.intent.domain.toLowerCase()}. The active ${mahadashaStr}-${antardashaStr} dasha period operates as the primary timing driver for this matter.`;
 
         // Formulate Hurdles Note. Prefer the verdict engine's actual,
@@ -902,7 +961,8 @@ export const KPQueryView: React.FC<KPQueryViewProps> = ({ chart: propsChart, bir
           hasHurdles,
           summary,
           hurdlesNote,
-          checkpoints
+          checkpoints,
+          rulingPlanetConfirmation: nativeResult.rulingPlanetConfirmation
         };
 
         setMessages((p) => [

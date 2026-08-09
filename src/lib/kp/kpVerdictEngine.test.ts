@@ -197,6 +197,44 @@ describe('generateKPVerdict — Pratyantardasha (PD) timing replaces hardcoded p
   });
 });
 
+describe('generateKPVerdict — Ruling Planets synthesis and plain-English summary', () => {
+  test('RP convergence is HIGH when top-tier RP layers overlap with real significators (not fabricated)', () => {
+    const chart = baseChart();
+    // Fixture's rulingPlanets.lagnaSubLord = 'Venus' (a level1 significator
+    // of House 7) and moonSubLord = 'Jupiter' (also level1) — a genuine
+    // overlap the engine should detect, not assume.
+    const verdict = generateKPVerdict({ question: 'q', topic: 'MARRIAGE', relevantHouse: 7 }, chart);
+    expect(verdict.rulingPlanetConfirmation).toBeDefined();
+    expect(verdict.rulingPlanetConfirmation?.convergenceLevel).toBe('HIGH');
+    expect(verdict.rulingPlanetConfirmation?.topTierMatch).toBe(true);
+    expect(verdict.rulingPlanetConfirmation?.overlappingPlanets).toContain('Venus');
+  });
+
+  test('RP convergence is LOW and says so honestly when no RP layer overlaps with significators or dasha lords', () => {
+    const chart = baseChart();
+    // None of these planets are House 7 significators (Jupiter/Venus) or
+    // the active Jupiter Mahadasha / Venus Antardasha lords.
+    chart.rulingPlanets = {
+      lagnaSign: 'Aries', lagnaSignLord: 'Mars', lagnaStarLord: 'Ketu', lagnaSubLord: 'Mars', lagnaSubSubLord: 'Mars',
+      moonSign: 'Cancer', moonSignLord: 'Moon', moonStarLord: 'Rahu', moonSubLord: 'Rahu', moonSubSubLord: 'Rahu',
+      dayLord: 'Saturn', timestamp: '1990-01-01T12:00:00Z'
+    };
+    const verdict = generateKPVerdict({ question: 'q', topic: 'MARRIAGE', relevantHouse: 7 }, chart);
+    expect(verdict.rulingPlanetConfirmation?.convergenceLevel).toBe('LOW');
+    expect(verdict.rulingPlanetConfirmation?.overlappingPlanets).toHaveLength(0);
+    expect(verdict.rulingPlanetConfirmation?.synthesis).toMatch(/no overlap/i);
+  });
+
+  test('plainSummary is a jargon-free synthesis, distinct from the technical explanation text', () => {
+    const chart = baseChart();
+    const verdict = generateKPVerdict({ question: 'q', topic: 'MARRIAGE', relevantHouse: 7 }, chart);
+    expect(verdict.plainSummary).toBeTruthy();
+    // Should not contain raw KP jargon like house numbers or "cusp sub lord"
+    expect(verdict.plainSummary).not.toMatch(/cusp sub lord/i);
+    expect(verdict.plainSummary).not.toMatch(/House \d+/);
+  });
+});
+
 describe('KPVerdictEngine.generateVerdictWithIntent — CHILDREN domain regression', () => {
   test('a CHILDREN-domain intent must resolve to topic CHILDREN, not silently fall back to GENERAL', async () => {
     // Regression test for a real production bug: the domain->topic mapping

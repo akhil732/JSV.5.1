@@ -90,12 +90,12 @@ export interface LiveTransitSnapshot {
 // ─────────────────────────────────────────────────────────────────────────────
 // AYANAMSA (Lahiri, linear precession approximation)
 // ─────────────────────────────────────────────────────────────────────────────
-function lahiriAyanamsa(jd: number): number {
+export function lahiriAyanamsa(jd: number): number {
   const yearsFromJ2000 = (jd - 2451545.0) / 365.25;
   return 23.85 + yearsFromJ2000 * (50.2388475 / 3600);
 }
 
-function toSidereal(tropicalDeg: number, ayanamsa: number): number {
+export function toSidereal(tropicalDeg: number, ayanamsa: number): number {
   return ((tropicalDeg - ayanamsa) % 360 + 360) % 360;
 }
 

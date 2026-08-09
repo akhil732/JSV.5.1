@@ -3,7 +3,7 @@
  * Based on KP Astrology principles for deterministic query classification
  */
 
-import { KPVerdictStep } from '../../types/kp';
+import { KPVerdictStep, RulingPlanets } from '../../types/kp';
 
 /**
  * Life domain categories aligned with KP house significations
@@ -123,6 +123,26 @@ export interface QueryAnalysisResult {
    * one-size-fits-all "legal/financial paperwork" message.
    */
   obstacles?: string[];
+  /**
+   * Jargon-free 2-4 sentence synthesis of promise + PD timing + Ruling
+   * Planet convergence, meant to be the primary thing a non-technical
+   * reader sees. The full technical `analysisSteps` remain available
+   * underneath for anyone who wants the underlying working.
+   */
+  plainSummary?: string;
+  /**
+   * Ruling Planets (RP) micro-timing cross-check — the live planetary
+   * signature of the exact moment the question is asked, cross-referenced
+   * against this house's significators and active Dasha lords. See
+   * kpVerdictEngine.ts's synthesizeRulingPlanets() for the full rationale.
+   */
+  rulingPlanetConfirmation?: {
+    rulingPlanets: RulingPlanets;
+    overlappingPlanets: string[];
+    topTierMatch: boolean;
+    convergenceLevel: 'HIGH' | 'MODERATE' | 'LOW';
+    synthesis: string;
+  };
   requiredClarification?: {
     question: string;
     options: string[];

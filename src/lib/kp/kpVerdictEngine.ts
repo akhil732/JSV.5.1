@@ -1,4 +1,4 @@
-import { KPChart, KPQuery, KPVerdict, KPVerdictStep, TopicEnum, KPHouse } from '../../types/kp';
+import { KPChart, KPQuery, KPVerdict, KPVerdictStep, TopicEnum, KPHouse, RulingPlanets } from '../../types/kp';
 import { QueryAnalysisResult, GatekeeperVerdict } from './queryIntent';
 import { QueryIntentRecognizer } from './queryIntentRecognizer';
 import { lookupTriplePlanetProfession, getBusinessSuitability } from './professionalSignificators';
@@ -7,6 +7,69 @@ import { getRankedSignificators } from './significatorAnalyzer';
 import { evaluateCuspPromise, HouseNumber, HOUSE_SIGNIFICATOR_MATRIX } from './gatekeeperRules';
 import { AppError, ErrorCode } from '../errors/AppError';
 import { calculateKPSubLord } from './subLordMapper';
+import { calculateRulingPlanets } from './rulingPlanetsCalculator';
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * synthesizeRulingPlanets — the KP "micro-timing" cross-check
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * The Verdict (gatekeeper + significators + dasha/PD + transit + D-9) is the
+ * macro map: what the chart structurally allows and roughly when. Ruling
+ * Planets are the micro-scope: the live planetary signature of THIS exact
+ * moment (Lagna sign/star/sub lords, Moon sign/star/sub lords, Day Lord).
+ * Per KP practice, when the planets ruling the moment overlap with the
+ * house's significators or the active Dasha-Bhukti-Pratyantardasha lords,
+ * that convergence is the traditional signal that the moment itself is
+ * "ripe" for the event — not just that the chart eventually allows it.
+ *
+ * Priority order (per KP texts, and as specified by the person building
+ * this feature): Lagna Sub Lord and Lagna Star Lord carry the most weight,
+ * followed by Moon Star Lord, then the remaining RP layers.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
+function synthesizeRulingPlanets(
+  rp: RulingPlanets,
+  primarySignificators: string[],
+  dashaLords: string[]
+): NonNullable<KPVerdict['rulingPlanetConfirmation']> {
+  const relevantPlanets = Array.from(new Set([...primarySignificators, ...dashaLords]));
+
+  // Ordered by traditional KP weight: Lagna Sub Lord and Lagna Star Lord
+  // first (highest weight), then Moon Star Lord, then the rest.
+  const rpLayers: { label: string; planet: string; topTier: boolean }[] = [
+    { label: 'Lagna Sub Lord', planet: rp.lagnaSubLord, topTier: true },
+    { label: 'Lagna Star Lord', planet: rp.lagnaStarLord, topTier: true },
+    { label: 'Moon Star Lord', planet: rp.moonStarLord, topTier: true },
+    { label: 'Lagna Sign Lord', planet: rp.lagnaSignLord, topTier: false },
+    { label: 'Moon Sign Lord', planet: rp.moonSignLord, topTier: false },
+    { label: 'Moon Sub Lord', planet: rp.moonSubLord, topTier: false },
+    { label: 'Day Lord', planet: rp.dayLord, topTier: false }
+  ];
+
+  const overlaps = rpLayers.filter((layer) => relevantPlanets.includes(layer.planet));
+  const overlappingPlanets = Array.from(new Set(overlaps.map((o) => o.planet)));
+  const topTierMatch = overlaps.some((o) => o.topTier);
+
+  let convergenceLevel: 'HIGH' | 'MODERATE' | 'LOW';
+  if (topTierMatch && overlaps.length >= 2) {
+    convergenceLevel = 'HIGH';
+  } else if (overlaps.length >= 1) {
+    convergenceLevel = 'MODERATE';
+  } else {
+    convergenceLevel = 'LOW';
+  }
+
+  let synthesis: string;
+  if (convergenceLevel === 'HIGH') {
+    synthesis = `The current moment's Ruling Planets (${overlaps.map((o) => `${o.planet} as ${o.label}`).join(', ')}) strongly converge with this house's significators/active Dasha lords — this is a high-reliability window for the event, not just a structurally-possible one.`;
+  } else if (convergenceLevel === 'MODERATE') {
+    synthesis = `The current moment's Ruling Planets show partial overlap (${overlaps.map((o) => `${o.planet} as ${o.label}`).join(', ')}) with this house's significators/active Dasha lords — the moment is somewhat active, but not a peak convergence window.`;
+  } else {
+    synthesis = `The current moment's Ruling Planets (Lagna: ${rp.lagnaSignLord}/${rp.lagnaStarLord}/${rp.lagnaSubLord}, Moon: ${rp.moonSignLord}/${rp.moonStarLord}, Day: ${rp.dayLord}) show no overlap with this house's significators or active Dasha lords — this specific moment is not a strong timing trigger; the event's own Dasha/Pratyantardasha window remains the primary guide.`;
+  }
+
+  return { rulingPlanets: rp, overlappingPlanets, topTierMatch, convergenceLevel, synthesis };
+}
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
@@ -693,6 +756,49 @@ ${transitSupported
     explanation = `House ${targetHouse} cusp sub lord ${cuspSubLord} promises ${promise.toLowerCase()} for ${topic.toLowerCase()}. Active Dasha is ${currentDasha.mahadasha}-${currentDasha.antardasha}${hasCurrentPD ? `-${currentDasha.pratyantardasha}` : ''}.`;
   }
 
+  // Ruling Planets synthesis — the KP "micro-timing" cross-check layered
+  // on top of the macro Verdict above. Uses the chart's already-computed
+  // live Ruling Planets (calculated at query time by all 3 chart-
+  // construction call sites) when available; computes a fresh live
+  // snapshot from the native's birth location otherwise, rather than
+  // silently omitting this layer.
+  const dashaLordsForRP = Array.from(new Set([
+    currentDasha.mahadasha,
+    currentDasha.antardasha,
+    ...(currentDasha.pratyantardasha ? [currentDasha.pratyantardasha] : [])
+  ].filter(Boolean))) as string[];
+  const liveRP = chart.rulingPlanets || calculateRulingPlanets(undefined, undefined, chart.birthData?.latitude, chart.birthData?.longitude);
+  if (!chart.rulingPlanets) {
+    dataQualityWarnings.push('Chart did not include pre-computed Ruling Planets; a fresh live snapshot was computed for this check instead of being omitted.');
+  }
+  const rulingPlanetConfirmation = synthesizeRulingPlanets(liveRP, primarySignificators, dashaLordsForRP);
+
+  // Plain-English summary — a 2-4 sentence, jargon-free synthesis of the
+  // full technical verdict above (promise + PD-level timing + Ruling
+  // Planet convergence), intended as the primary thing a non-technical
+  // reader sees. The full step-by-step technical reasoning above remains
+  // available in `steps`/`reasoning` for anyone who wants to see the
+  // underlying working — this doesn't replace it, it fronts it.
+  const topicPlain = topic === 'GENERAL' ? 'this question' : `your ${topic.toLowerCase()} question`;
+  const promisePlain = promise === 'YES'
+    ? 'the chart looks favorable'
+    : promise === 'DELAYED'
+      ? 'the chart supports this, but it will take some patience'
+      : 'the chart shows real obstacles for this right now';
+  const timingPlain = promise === 'YES'
+    ? (hasCurrentPD
+        ? `Right now, through ${currentDasha.pratyantardashaEnd}, is a genuinely supportive period.`
+        : `The current period is supportive.`)
+    : nextFavorablePD
+      ? `The best window ahead looks to be around ${formatShortDate(nextFavorablePD.startDate)} to ${formatShortDate(nextFavorablePD.endDate)}.`
+      : `A precise timing window isn't available yet from the current data — patience is the honest answer here.`;
+  const rpPlain = rulingPlanetConfirmation.convergenceLevel === 'HIGH'
+    ? "The planetary signature of this exact moment also strongly supports it — this is a good time to take real steps, not just wait."
+    : rulingPlanetConfirmation.convergenceLevel === 'MODERATE'
+      ? "This exact moment offers some support too, though it isn't a peak window."
+      : "This exact moment isn't a strong trigger on its own — the timing window above matters more than the moment you're asking.";
+  const plainSummary = `For ${topicPlain}, ${promisePlain}. ${timingPlain} ${rpPlain}`;
+
   return {
     promise,
     timing: timingStr,
@@ -723,7 +829,9 @@ ${transitSupported
           ? 'D-1 & D-9 alignment confirms structural strength of natal promise'
           : 'D-9 placement diverges from D-1 promise; structural strength is uncertain'
     },
-    dataQualityWarnings
+    dataQualityWarnings,
+    rulingPlanetConfirmation,
+    plainSummary
   };
 }
 
@@ -818,6 +926,8 @@ export class KPVerdictEngine {
       analysisSteps: baseVerdict.steps,
       confidence: baseVerdict.confidenceScore,
       obstacles: baseVerdict.obstacles,
+      plainSummary: baseVerdict.plainSummary,
+      rulingPlanetConfirmation: baseVerdict.rulingPlanetConfirmation,
       requiredClarification: intent.requiresClarification
         ? {
             question: `Your query seems to relate to multiple domains. Which of these matched your intent?`,
