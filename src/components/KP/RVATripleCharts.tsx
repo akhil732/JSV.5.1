@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { KPChart } from '../../types/kp';
-import { DivisionalChart } from '../DivisionalChart';
-import { Sparkles, Compass, Shield, Clock, Eye, Layers } from 'lucide-react';
+import LagnaChartCard from '../LagnaChartCard';
 
 interface RVATripleChartsProps {
   kpChart: KPChart;
@@ -9,7 +8,7 @@ interface RVATripleChartsProps {
 }
 
 export const RVATripleCharts: React.FC<RVATripleChartsProps> = ({ kpChart, horoscopeData }) => {
-  const [chartStyle, setChartStyle] = useState<'south-indian' | 'north-indian'>('south-indian');
+  const [chartStyle, setChartStyle] = useState<'south-indian' | 'east-indian'>('south-indian');
   const [activeChartFocus, setActiveChartFocus] = useState<'all' | 'natal' | 'transit'>('all');
   const [transitReport, setTransitReport] = useState<any | null>(null);
   const [transitLoading, setTransitLoading] = useState<boolean>(false);
@@ -62,20 +61,14 @@ export const RVATripleCharts: React.FC<RVATripleChartsProps> = ({ kpChart, horos
       }`}>
         {/* 1. Natal Chart */}
         {(activeChartFocus === 'all' || activeChartFocus === 'natal') && (
-          <div className="bg-ds-surface border border-ds-secondary/15 rounded-2xl p-4 shadow-sm space-y-3 relative group hover:border-ds-primary/40 transition-all">
-            <div className="flex items-center justify-between border-b border-ds-secondary/10 pb-2">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-ds-primary" />
-                <h4 className="font-serif font-bold text-sm text-ds-secondary">Natal Chart (D-1 Rasi)</h4>
-              </div>
-              <span className="text-[10px] font-mono font-bold bg-ds-primary/10 text-ds-primary px-2 py-0.5 rounded-full">
-                Birth Root
-              </span>
-            </div>
-
-            <div className="flex justify-center items-center py-2 min-h-[300px]">
-              <DivisionalChart horoscopeData={horoscopeData} />
-            </div>
+          <div className="space-y-3">
+            <LagnaChartCard
+              horoscope={horoscopeData?.horoscope || horoscopeData}
+              cardTitle="Natal Chart (D-1 Rasi)"
+              borderColor="blue"
+              chartStyle={chartStyle}
+              onChartStyleChange={setChartStyle}
+            />
 
             <div className="bg-ds-surface-container rounded-xl p-2.5 text-[11px] text-ds-on-surface-variant space-y-1">
               <div className="flex justify-between font-medium">
@@ -90,32 +83,24 @@ export const RVATripleCharts: React.FC<RVATripleChartsProps> = ({ kpChart, horos
           </div>
         )}
 
-        {/* 3. Transit Chart (Gochara) */}
+        {/* 2. Transit Chart (Gochara) */}
         {(activeChartFocus === 'all' || activeChartFocus === 'transit') && (
-          <div className="bg-ds-surface border border-ds-secondary/15 rounded-2xl p-4 shadow-sm space-y-3 relative group hover:border-ds-success-green/40 transition-all">
-            <div className="flex items-center justify-between border-b border-ds-secondary/10 pb-2">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-ds-success-green" />
-                <h4 className="font-serif font-bold text-sm text-ds-secondary">Gochara Transit Chart</h4>
-              </div>
-              <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                transitLoading 
-                  ? 'bg-ds-primary/10 text-ds-primary animate-pulse' 
-                  : 'bg-ds-success-green/10 text-ds-success-green'
-              }`}>
-                {transitLoading ? 'Calculating...' : 'Live Positions'}
-              </span>
-            </div>
-
-            <div className="flex justify-center items-center py-2 min-h-[300px]">
-              {transitLoading && !transitReport ? (
+          <div className="space-y-3">
+            {transitLoading && !transitReport ? (
+              <div className="bg-ds-surface border border-ds-secondary/15 rounded-2xl p-4 shadow-sm min-h-[300px] flex items-center justify-center">
                 <div className="text-center text-xs text-ds-on-surface-variant">
                   Calculating Today's Astrological Transit...
                 </div>
-              ) : (
-                <DivisionalChart horoscopeData={transitReport || horoscopeData} />
-              )}
-            </div>
+              </div>
+            ) : (
+              <LagnaChartCard
+                horoscope={(transitReport?.horoscope || transitReport) || (horoscopeData?.horoscope || horoscopeData)}
+                cardTitle="Gochara Transit Chart"
+                borderColor="purple"
+                chartStyle={chartStyle}
+                onChartStyleChange={setChartStyle}
+              />
+            )}
 
             <div className="bg-ds-surface-container rounded-xl p-2.5 text-[11px] text-ds-on-surface-variant space-y-1">
               <div className="flex justify-between font-medium">
