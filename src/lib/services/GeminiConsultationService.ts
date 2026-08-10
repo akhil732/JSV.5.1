@@ -180,6 +180,9 @@ ${doshasStr}
 
 --- CONSULTATION INSTRUCTIONS ---
 Using Vedic astrology rules (Parashari, Phaladeepika, and Brihat Samhita) and utilizing Google Search to fetch contemporary alignments, remedies, or references if necessary, answer the user's specific question.
+
+IMPORTANT RULE: When the Dasha lord and Antardasha lord sit in a 6-8 (Shashtashtaka) or 2-12 (Dwadasashtaka) relationship—either mutually in the natal chart or through current Gochara transits—they trigger friction, mental stress, health vulnerabilities, and sudden obstacles. The active sub-lord can only deliver results permitted by the main Dasha lord, and a 6/8 or 2/12 transit-to-natal or mutual axis acts as a major stress test.
+
 You MUST write all textual fields of the JSON response entirely in the requested language: ${language === 'hi' ? 'Hindi' : language === 'te' ? 'Telugu' : 'English'}.
 
 Format your response as a valid JSON object strictly matching this schema:
@@ -187,7 +190,7 @@ Format your response as a valid JSON object strictly matching this schema:
   "summary": "A concise summary of the astrological analysis concerning the user's question.",
   "directAnswer": "The main, direct, and empathetic answer to the user's question, integrating chart, dasha, and transits.",
   "whyThisConclusion": "The technical planetary rationale (e.g., house lords, aspects, dasha triggers) supporting this conclusion.",
-  "dashaInfluence": "Analysis of the current Mahadasha and Antardasha lords and how their lordship, placement, and nature affect the queried matter.",
+  "dashaInfluence": "Analysis of the current Mahadasha and Antardasha lords and how their lordship, placement, and nature affect the queried matter. Apply the 6-8/2-12 stress test rule when applicable.",
   "transitInfluence": "Analysis of current transits (specifically Saturn, Jupiter, Rahu, Ketu) relative to the natal Moon and houses, and how they impact the queried matter.",
   "supportingFactors": "Planetary combinations, aspects, or exaltations that act as strong supporting forces.",
   "opportunities": "Key positive openings, timing windows, or trends the user should leverage.",

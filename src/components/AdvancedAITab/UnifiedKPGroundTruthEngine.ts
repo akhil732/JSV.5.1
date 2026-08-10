@@ -36,6 +36,7 @@ import { calculateKPSubLord, ZODIAC_SIGNS, calculateNavamsaSign } from '../../li
 import { analyzeSignificators, getHouseOccupied } from '../../lib/kp/significatorAnalyzer';
 import { calculatePlacidusCusps } from '../../lib/kp/placidusCalculator';
 import { calculateRulingPlanets } from '../../lib/kp/rulingPlanetsCalculator';
+import { computeLiveTransitSnapshot, renderGocharaPromptBlock } from '../../lib/engines/LiveTransitEngine';
 
 export type ConsultationPersona = 'classical_parashari' | 'vedic_divisional' | 'vedic_remedial' | 'kp_stellar' | 'quick';
 
@@ -332,7 +333,7 @@ export function computeUnifiedKPGroundTruth(
 
   // 5. Evaluate Transit Modulation from TransitEngine
   const transitEngine = new TransitEngine(kpChart, birthDetails);
-  const moonSign = horoscopeData?.horoscope?.planets?.Moon?.sign || 'Aries';
+  const moonSign = getNatalMoonSign(horoscopeData);
   const transitModulation = transitEngine.evaluateMoonTransit(moonSign);
 
   // 6. Extract Cusp Sub-Lord details for primary house
@@ -401,6 +402,26 @@ export function computeUnifiedKPGroundTruth(
     birthDetails,
     horoscopeData
   };
+}
+
+/**
+ * Canonical natal Moon sign accessor.
+ *
+ * BUG FIX: previously this engine read `horoscopeData.horoscope.planets.Moon.sign`
+ * to drive Gochara (transit) house-counting. That path does not exist anywhere
+ * the real chart payload is actually shaped — useKPChart.ts, buildKPChartFromHoroscope,
+ * and formatQuickDynamicProfile all correctly read
+ * `horoscopeData.horoscope.divisional_charts['D-1_rasi'].Moon.sign`. The old path
+ * silently returned undefined, so `|| 'Aries'` fired for every native regardless
+ * of their real Chandra Rasi, making every Gochara-derived result wrong.
+ */
+function getNatalMoonSign(horoscopeData: any): string {
+  return (
+    horoscopeData?.horoscope?.divisional_charts?.['D-1_rasi']?.Moon?.sign ||
+    horoscopeData?.rasi?.Moon?.sign ||
+    horoscopeData?.horoscope?.planets?.Moon?.sign ||
+    'Aries'
+  );
 }
 
 const rayValues: Record<string, number> = {
@@ -834,16 +855,7 @@ ${formatQuickDynamicProfile(groundTruth, nativeName)}
 
 ANALYSIS RULES:
 1. Natal/Dasha analysis from Lagna.
-2. Gochara (Transit) analysis from Moon Sign for ALL 9 PLANETS:
-   - Saturn (శని): Transits Pisces (6th house from Moon - highly supportive, victory over enemies/obstacles, health, career elevation).
-   - Jupiter (గురు): Transits Cancer (10th from Moon - exalted transit, professional action, new responsibilities, learning/mentorship).
-   - Rahu (రాహువు): Transits Aquarius (5th from Moon - speculative mind, unconventional ideas, high ambition).
-   - Ketu (కేతువు): Transits Leo (11th from Moon - detached gains, spiritual associations, sudden windfalls).
-   - Sun (సూర్యుడు): Transits Cancer (10th from Moon - power, career visibility, recognition from superiors) / Leo (11th from Moon - direct gains, high visibility).
-   - Mars (కుజుడు): Transits Virgo (12th from Moon - dynamic energy direction, foreign interests, elevated expenditure).
-   - Mercury (బుधుడు): Transits Leo (11th from Moon - financial/intellectual gains, active communication).
-   - Venus (శుక్రుడు): Transits Virgo (12th from Moon - luxury spending, artistic solitude, relationship adjustments).
-   - Moon (చంద్రుడు): Dynamic daily transits influencing immediate emotional patterns.
+${renderGocharaPromptBlock(computeLiveTransitSnapshot(getNatalMoonSign(groundTruth.horoscopeData), new Date()))}
 3. Translate all analysis into Telugu script, including standard terms.
 
 Structure your response exactly as follows:
