@@ -857,6 +857,12 @@ ANALYSIS RULES:
 1. Natal/Dasha analysis from Lagna.
 ${renderGocharaPromptBlock(computeLiveTransitSnapshot(getNatalMoonSign(groundTruth.horoscopeData), new Date()))}
 3. Translate all analysis into Telugu script, including standard terms.
+4. STRICT QUALITY CONSTRAINTS:
+   - NEVER invent or alter planetary positions, degrees, or house placements.
+   - NEVER make unmotivated causal jumps (e.g., claiming Mercury placement automatically means "IT, foreign, or communication job" without explicit house lordship evidence).
+   - NEVER use absolute or overly optimistic language like "Golden Period" (సువర్ణ సమయం) or guarantees. Use probabilistic language ("అనుకూల సంకేతాలు ఉన్నవి", "సమయ పరిధి").
+   - NEVER prescribe unsolicited remedies unless the user explicitly asks for remedies.
+   - DO NOT mention missing D-7 or Mother's Lagna data unless the query is specifically about children or progeny.
 
 Structure your response exactly as follows:
 ## 1. లగ్న కుండలి విశ్లేషణ (Lagna Kundali Analysis)

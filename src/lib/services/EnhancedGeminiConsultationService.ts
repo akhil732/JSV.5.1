@@ -3,6 +3,10 @@ import { calculateActiveDasha } from "../engines/DashaEngine";
 import { calculateTransits } from "../engines/TransitEngine";
 import { calculateManglikDosha } from "../manglikDosha";
 import type { BirthDetails } from "../../types";
+import { ChartDataValidator, type CanonicalChartData } from "../engines/ChartDataValidator";
+import { ReasoningEngine } from "../engines/ReasoningEngine";
+import { PresentationEngine } from "../engines/PresentationEngine";
+import { CONSULTATION_CONSTRAINTS } from "../engines/ConsultationConstraints";
 import {
   computeUnifiedKPGroundTruth,
   buildSystemPrompt as buildUnifiedSystemPrompt
@@ -171,7 +175,26 @@ export class EnhancedGeminiConsultationService {
   async generateConsultationResponse(
     request: EnhancedConsultationRequest
   ): Promise<ConversationMessage> {
+    let canonicalChart: CanonicalChartData | undefined;
     try {
+      if (request.horoscopeData) {
+        try {
+          canonicalChart = ChartDataValidator.validateConsistency(
+            request.horoscopeData,
+            request.birthData
+          );
+        } catch (validationError: any) {
+          if (validationError?.message?.includes('CHART_DATA')) {
+            return {
+              role: "assistant",
+              content: `చార్ట్ డేటా సమస్య: జాతకం పూర్తిగా లేదా సరిగ్గా లోడ్ కాలేదు. (${validationError.message})`,
+              timestamp: new Date(),
+              metadata: { persona: request.persona || "quick" }
+            };
+          }
+        }
+      }
+
       const queryIntent = this.queryEngine.recognizeIntent(request.userQuery);
       const domainClassification = this.queryEngine.classifyDomain(queryIntent);
 
@@ -230,7 +253,7 @@ export class EnhancedGeminiConsultationService {
       console.warn("Enhanced consultation warning (using deterministic fallback):", error);
       return {
         role: "assistant",
-        content: this.generateFallbackConsultationResponse(request.userQuery),
+        content: this.generateFallbackConsultationResponse(request.userQuery, request.birthData, request.horoscopeData, request.language),
         timestamp: new Date(),
         metadata: {
           persona: request.persona || "classical_parashari"
@@ -500,22 +523,43 @@ export class EnhancedGeminiConsultationService {
     return !forbiddenKeys.some(key => dataKeys.includes(key.toLowerCase()));
   }
 
-  private generateFallbackConsultationResponse(userMessage: string): string {
-    return `### Vedic Astrological Consultation Summary
+  private generateFallbackConsultationResponse(
+    userMessage: string,
+    birthData?: BirthDetails,
+    horoscopeData?: any,
+    language: "en" | "hi" | "te" = "te"
+  ): string {
+    const defaultBirthDetails: BirthDetails = birthData || {
+      name: "Native",
+      gender: "Male",
+      date: new Date().toISOString().split('T')[0],
+      time: "12:00",
+      approximateTime: false,
+      place: "Hyderabad",
+      latitude: 17.385,
+      longitude: 78.486,
+      timezone: 5.5
+    };
 
-Based on your natal birth chart analysis and classical Parashari principles, here are the key findings regarding your query:
+    let canonicalChart: CanonicalChartData | undefined;
+    if (horoscopeData) {
+      try {
+        canonicalChart = ChartDataValidator.validateConsistency(horoscopeData, defaultBirthDetails);
+      } catch (e) {
+        // Fallback
+      }
+    }
 
----
+    const groundTruth = computeUnifiedKPGroundTruth(userMessage, defaultBirthDetails, horoscopeData || {});
+    const claims = ReasoningEngine.generateAstrologicalClaims(groundTruth, userMessage, canonicalChart);
 
-### 1. Vimshottari Dasha & Event Timing Alignment
-- Your active planetary period highlights important shifts in focus and energy.
-- Timing aligns favorably for strategic decisions during the current Antardasha period.
-
----
-
-### 2. Planetary Transits & Vedic Guidance
-- Major planetary transits (Saturn and Jupiter w.r.t Moon) encourage disciplined action and steady expansion.
-- Focus on classical Vedic remedies and daily practices to align with benefic planetary forces.`;
+    return PresentationEngine.generateTeluguReport(
+      claims,
+      groundTruth,
+      userMessage,
+      canonicalChart,
+      language === "te" ? "te" : "en"
+    );
   }
 }
 
